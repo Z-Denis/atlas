@@ -1,10 +1,3 @@
-//! Configuration-space core types.
-//!
-//! This module defines the minimal domain abstraction used throughout Atlas.
-//! A space describes admissibility, flat sample size, and primitive scalar
-//! type. Optional structure is exposed through borrowed views, not owned
-//! nested configuration objects.
-
 use core::fmt;
 
 /// Minimal description of a configuration domain.
@@ -133,51 +126,6 @@ impl fmt::Display for SamplesError {
 
 impl std::error::Error for SamplesError {}
 
-/// A simple example space for binary spins encoded as `u8`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BinarySpace {
-    sample_size: usize,
-}
-
-impl BinarySpace {
-    pub fn new(sample_size: usize) -> Self {
-        Self { sample_size }
-    }
-}
-
-impl Space for BinarySpace {
-    type Scalar = u8;
-
-    fn sample_size(&self) -> usize {
-        self.sample_size
-    }
-
-    fn contains(&self, sample: &[Self::Scalar]) -> bool {
-        sample.len() == self.sample_size && sample.iter().all(|&x| x <= 1)
-    }
-}
-
-/// Zero-copy view for [`BinarySpace`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BinaryView<'a> {
-    pub sites: &'a [u8],
-}
-
-impl<'a> BinaryView<'a> {
-    pub fn as_slice(&self) -> &'a [u8] {
-        self.sites
-    }
-}
-
-impl ViewSpace for BinarySpace {
-    type View<'a> = BinaryView<'a> where Self: 'a, Self::Scalar: 'a;
-
-    fn view<'a>(&self, sample: &'a [Self::Scalar]) -> Self::View<'a> {
-        debug_assert!(self.contains(sample));
-        BinaryView { sites: sample }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,25 +159,10 @@ mod tests {
 
     #[test]
     fn samples_support_arbitrary_batch_axes() {
-        let samples = Samples::new(
-            vec![0u8, 1, 1, 0, 1, 1, 0, 0],
-            vec![2, 2],
-            2,
-        )
-        .unwrap();
+        let samples = Samples::new(vec![0u8, 1, 1, 0, 1, 1, 0, 0], vec![2, 2], 2).unwrap();
 
         assert_eq!(samples.batch_shape, vec![2, 2]);
         let collected: Vec<&[u8]> = samples.iter_samples().collect();
         assert_eq!(collected, vec![&[0, 1], &[1, 0], &[1, 1], &[0, 0]]);
-    }
-
-    #[test]
-    fn binary_space_provides_zero_copy_view() {
-        let space = BinarySpace::new(4);
-        let sample = [1u8, 0, 1, 1];
-        assert!(space.contains(&sample));
-
-        let view = space.view(&sample);
-        assert_eq!(view.as_slice(), &sample);
     }
 }
