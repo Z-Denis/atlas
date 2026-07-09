@@ -30,9 +30,10 @@ fn skip_index<B: Backend>(
     forbidden: Tensor<B, 1, Int>,
 ) -> Tensor<B, 1, Int> {
     let forbidden = forbidden.cast(choice.dtype());
-    choice
-        .clone()
-        .mask_where(choice.clone().greater_equal(forbidden), choice.add_scalar(1))
+    choice.clone().mask_where(
+        choice.clone().greater_equal(forbidden),
+        choice.add_scalar(1),
+    )
 }
 
 pub trait Proposal<B: Backend, S, K>
@@ -78,8 +79,10 @@ where
 
         let proposal_local_indices =
             randint::<B, 1>([n_chains], 0, (local_size - 1) as i64, &device);
-        let proposal_values =
-            space.states_at(skip_index::<B>(proposal_local_indices, current_local_indices));
+        let proposal_values = space.states_at(skip_index::<B>(
+            proposal_local_indices,
+            current_local_indices,
+        ));
 
         samples.scatter_nd::<2, 1>(indices, proposal_values, IndexingUpdateOp::Assign)
     }
@@ -149,7 +152,10 @@ impl<P> Metropolis<P> {
         let current = state.chains.clone();
         let proposal = self.proposal.propose(space, current.clone());
         let valid = space.contains(proposal.clone()).all().into_data();
-        assert!(valid.to_vec::<bool>().unwrap()[0], "proposal left the space");
+        assert!(
+            valid.to_vec::<bool>().unwrap()[0],
+            "proposal left the space"
+        );
 
         let logp_current = model.log_density_batch(space, current.clone());
         let logp_proposal = model.log_density_batch(space, proposal.clone());
@@ -362,7 +368,10 @@ mod tests {
         let mut counts = vec![0usize; local_states.len()];
 
         for value in values {
-            let idx = local_states.iter().position(|state| *state == value).unwrap();
+            let idx = local_states
+                .iter()
+                .position(|state| *state == value)
+                .unwrap();
             counts[idx] += 1;
         }
 

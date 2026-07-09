@@ -1,6 +1,4 @@
-use burn::tensor::{
-    backend::Backend, Distribution, Int, Tensor, TensorCreationOptions,
-};
+use burn::tensor::{Distribution, Int, Tensor, TensorCreationOptions, backend::Backend};
 
 pub(crate) fn int_opts<B: Backend>(device: &B::Device) -> TensorCreationOptions<B> {
     TensorCreationOptions::<B>::int().with_device(device.clone())

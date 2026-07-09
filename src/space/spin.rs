@@ -1,6 +1,6 @@
 use crate::layout::Layout;
 
-use burn::tensor::{backend::Backend, BasicOps, Bool, Tensor};
+use burn::tensor::{BasicOps, Bool, Tensor, backend::Backend};
 use burn_backend::Element;
 
 use super::core::{Space, ViewSpace};

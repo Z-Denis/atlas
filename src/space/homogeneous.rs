@@ -1,4 +1,4 @@
-use burn::tensor::{backend::Backend, BasicOps, Bool, Int, Tensor};
+use burn::tensor::{BasicOps, Bool, Int, Tensor, backend::Backend};
 use burn_backend::Element;
 
 use crate::layout::Layout;
@@ -29,11 +29,7 @@ pub trait HomogeneousProductSpace: Space {
             .clone()
             .unsqueeze_dim::<2>(1)
             .expand([n_values, local_size])
-            .equal(
-                states
-                    .unsqueeze_dim::<2>(0)
-                    .expand([n_values, local_size]),
-            )
+            .equal(states.unsqueeze_dim::<2>(0).expand([n_values, local_size]))
             .int()
             .argmax(1)
             .squeeze_dim::<1>(1)
