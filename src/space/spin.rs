@@ -1,5 +1,8 @@
 use crate::layout::Layout;
 
+use burn::tensor::{backend::Backend, BasicOps, Bool, Tensor};
+use burn_backend::Element;
+
 use super::core::{Space, ViewSpace};
 use super::homogeneous::{HomogeneousProductSpace, HomogeneousSpace};
 
@@ -23,15 +26,16 @@ impl Spin {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SpinSpace<L> {
-    space: HomogeneousSpace<L>,
+pub struct SpinSpace<L, T> {
+    space: HomogeneousSpace<L, T>,
     spin: Spin,
 }
 
-impl<L> SpinSpace<L> {
-    pub fn new(layout: L, spin: Spin) -> Self {
+impl<L: Layout, T: PartialEq> SpinSpace<L, T> {
+    pub fn new(layout: L, spin: Spin, local_states: Vec<T>) -> Self {
+        assert_eq!(local_states.len(), spin.local_size());
         Self {
-            space: HomogeneousSpace::new(layout, spin.local_size()),
+            space: HomogeneousSpace::new(layout, local_states),
             spin,
         }
     }
@@ -41,35 +45,46 @@ impl<L> SpinSpace<L> {
     }
 }
 
-impl<L: Layout> Space for SpinSpace<L> {
-    type Scalar = u8;
+impl<L: Layout, T: PartialEq> Space for SpinSpace<L, T> {
+    type Scalar = T;
 
     fn sample_size(&self) -> usize {
         self.space.sample_size()
     }
 
-    fn contains(&self, sample: &[Self::Scalar]) -> bool {
-        self.space.contains(sample)
+    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    where
+        B: Backend,
+        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::Scalar: Clone + Element,
+    {
+        self.space.contains(samples)
     }
 }
 
-impl<L: Layout + 'static> ViewSpace for SpinSpace<L> {
-    type View<'a> = &'a [u8] where Self: 'a, Self::Scalar: 'a;
+impl<L: Layout + 'static, T: PartialEq + 'static> ViewSpace for SpinSpace<L, T> {
+    type View<'a>
+        = &'a [T]
+    where
+        Self: 'a,
+        Self::Scalar: 'a;
 
     fn view<'a>(&self, sample: &'a [Self::Scalar]) -> Self::View<'a> {
         self.space.view(sample)
     }
 }
 
-impl<L: Layout> HomogeneousProductSpace for SpinSpace<L> {
-    fn local_size(&self) -> usize {
-        self.spin.local_size()
+impl<L: Layout, T: PartialEq> HomogeneousProductSpace for SpinSpace<L, T> {
+    fn local_states(&self) -> &[Self::Scalar] {
+        self.space.local_states()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burn::backend::Flex;
+    use burn::tensor::{Int, Tensor};
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Chain(usize);
@@ -88,11 +103,12 @@ mod tests {
 
     #[test]
     fn spin_space_uses_homogeneous_structure() {
-        let space = SpinSpace::new(Chain(3), Spin::integer(1));
-        let sample = [0u8, 1, 2];
+        let space = SpinSpace::new(Chain(3), Spin::integer(1), vec![-1i32, 0, 1]);
+        let device = Default::default();
+        let sample: Tensor<Flex, 2, Int> = Tensor::from_data([[-1i32, 0, 1]], &device);
         assert_eq!(space.sample_size(), 3);
         assert_eq!(space.local_size(), 3);
-        assert!(space.contains(&sample));
-        assert_eq!(space.view(&sample), &sample);
+        assert!(space.contains(sample.clone()).into_scalar());
+        assert_eq!(space.view(&[-1i32, 0, 1]), &[-1i32, 0, 1]);
     }
 }
