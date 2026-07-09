@@ -7,3 +7,7 @@ description = "A Rust framework for variational models on structured configurati
 repository = "https://github.com/Z-Denis/atlas"
 
 [dependencies]
+burn = { version = "0.21.0", features = ["flex", "ndarray"] }
+burn-backend = "0.21.0"
+num-traits = "0.2"
+rand = "0.9"
