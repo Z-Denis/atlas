@@ -3,3 +3,5 @@
 *.md
 !README.md
 PROJECT_TREE.txt
+*~
+*.un~
