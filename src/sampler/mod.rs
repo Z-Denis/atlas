@@ -268,7 +268,7 @@ where
 mod tests {
     use super::*;
     use crate::layout::Layout;
-    use crate::space::{HomogeneousSpace, Spin, SpinSpace};
+    use crate::space::{HomogeneousProductSpace, HomogeneousSpace, Spin, SpinSpace};
     use burn::backend::Flex;
     use burn::tensor::backend::{Backend, BackendTypes};
     use burn::tensor::{Int, Tensor};
@@ -343,6 +343,45 @@ mod tests {
         assert_eq!(state.samples.dims(), [2, 1]);
         assert_eq!(ints(state.sampler_state.accepted.clone()), vec![2]);
         assert_eq!(ints(state.sampler_state.proposed.clone()), vec![2]);
+    }
+
+    #[test]
+    fn metropolis_sample_density_is_uniform() {
+        let n_chains = 4;
+        let n_samples_per_chain = 4;
+        let space = SpinSpace::new(Chain(1), Spin::half_integer(1), vec![-1i32, 1]);
+        let model = ZeroModel;
+        let sampler = Metropolis::new(LocalProposal);
+        let mut state: VariationalState<_, _, Flex, Int, _> =
+            VariationalState::from_space(model, space, sampler, n_chains, n_samples_per_chain);
+
+        state.sample();
+
+        let values = ints(state.samples.clone());
+        let local_states = state.space.local_states().to_vec();
+        let mut counts = vec![0usize; local_states.len()];
+
+        for value in values {
+            let idx = local_states.iter().position(|state| *state == value).unwrap();
+            counts[idx] += 1;
+        }
+
+        let total = counts.iter().sum::<usize>() as f64;
+        let density: Vec<f64> = counts.iter().map(|&count| count as f64 / total).collect();
+        println!(
+            "sample density: states={:?}, counts={:?}, density={:?}",
+            local_states, counts, density
+        );
+
+        assert_eq!(counts, vec![8, 8]);
+        assert_eq!(
+            ints(state.sampler_state.accepted.clone()),
+            vec![n_samples_per_chain as i32; n_chains]
+        );
+        assert_eq!(
+            ints(state.sampler_state.proposed.clone()),
+            vec![n_samples_per_chain as i32; n_chains]
+        );
     }
 
     #[derive(Clone, Copy, Debug)]
