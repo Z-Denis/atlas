@@ -1,5 +1,5 @@
-pub mod core;
 pub mod continuous;
+pub mod core;
 pub mod homogeneous;
 pub mod spin;
 

@@ -123,11 +123,7 @@ where
     K: Numeric<B, Elem = T>,
     T: Element + ToPrimitive + num_traits::Float,
 {
-    fn propose(
-        &self,
-        space: &S,
-        samples: SampleTensor<B, K>,
-    ) -> SampleTensor<B, K> {
+    fn propose(&self, space: &S, samples: SampleTensor<B, K>) -> SampleTensor<B, K> {
         let device = samples.device();
         let n_chains = samples.dims()[0];
         let noise = Tensor::<B, 2, K>::random(
@@ -321,7 +317,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, Spin, ViewSpace};
+    use crate::space::{
+        ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, Spin, ViewSpace,
+    };
     use burn::backend::Flex;
     use burn::tensor::backend::{Backend, BackendTypes};
     use burn::tensor::{Float, Int, Tensor};
@@ -438,7 +436,8 @@ mod tests {
         let model = ZeroModel;
         let sampler = Metropolis::new(GaussianProposal::new(0.1f32));
         let device: <Flex as BackendTypes>::Device = Default::default();
-        let mut state: SamplerState<Flex, Float> = SamplerState::new(space.random_state(1, &device));
+        let mut state: SamplerState<Flex, Float> =
+            SamplerState::new(space.random_state(1, &device));
         let before = state.chains.clone();
 
         sampler.clone().step(&space, &model, &mut state);
@@ -459,10 +458,7 @@ mod tests {
         let continuous = ContinuousSpace::new(-1.0f32, 1.0, 2);
         assert_eq!(continuous.sample_size(), 2);
         let continuous_sample: Tensor<Flex, 2, Float> = Tensor::from_data([[0.0f32, 1.0]], &device);
-        assert!(continuous
-            .contains(continuous_sample)
-            .all()
-            .into_scalar());
+        assert!(continuous.contains(continuous_sample).all().into_scalar());
         assert_eq!(continuous.view(&[0.0f32, 1.0]).particle(0), &[0.0, 1.0]);
         assert_eq!(
             continuous.random_state::<Flex, Float>(4, &device).dims(),
@@ -473,18 +469,17 @@ mod tests {
             SamplerState::from_space(&HomogeneousSpace::new(continuous, 1), 2, &device);
         let continuous_model = ZeroModel;
         let continuous_sampler = Metropolis::new(GaussianProposal::new(0.1f32));
-        continuous_sampler
-            .clone()
-            .step(&HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1), &continuous_model, &mut continuous_state);
+        continuous_sampler.clone().step(
+            &HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1),
+            &continuous_model,
+            &mut continuous_state,
+        );
         assert_eq!(continuous_state.chains.dims(), [2, 2]);
 
         let spin = Spin::half_integer(1);
         assert_eq!(spin.sample_size(), 1);
         let spin_sample: Tensor<Flex, 2, Int> = Tensor::from_data([[1i32]], &device);
-        assert!(spin
-            .contains(spin_sample)
-            .all()
-            .into_scalar());
+        assert!(spin.contains(spin_sample).all().into_scalar());
         assert_eq!(spin.view(&[1i32]), &[1]);
         assert_eq!(spin.random_state::<Flex, Int>(4, &device).dims(), [4, 1]);
 
