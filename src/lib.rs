@@ -32,9 +32,10 @@ mod utils;
 
 pub use layout::Layout;
 pub use sampler::{
-    LocalProposal, LogDensityBatch, Metropolis, Proposal, SamplerState, VariationalState,
+    GaussianProposal, LocalProposal, LogDensityBatch, Metropolis, Proposal, SamplerState,
+    VariationalState,
 };
 pub use space::{
-    HomogeneousProductSpace, HomogeneousSpace, LogDensity, Samples, Space, Spin, SpinSpace,
-    ViewSpace,
+    ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, LogDensity, Particles, Samples,
+    Space, Spin, SpinSpace, ViewSpace,
 };
