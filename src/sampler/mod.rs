@@ -321,7 +321,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, Spin};
+    use crate::space::{ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, Spin, ViewSpace};
     use burn::backend::Flex;
     use burn::tensor::backend::{Backend, BackendTypes};
     use burn::tensor::{Float, Int, Tensor};
@@ -450,6 +450,54 @@ mod tests {
         );
         assert_eq!(ints(state.accepted.clone()), vec![1]);
         assert_eq!(ints(state.proposed.clone()), vec![1]);
+    }
+
+    #[test]
+    fn local_spaces_integrate_with_sampler() {
+        let device: <Flex as BackendTypes>::Device = Default::default();
+
+        let continuous = ContinuousSpace::new(-1.0f32, 1.0, 2);
+        assert_eq!(continuous.sample_size(), 2);
+        let continuous_sample: Tensor<Flex, 2, Float> = Tensor::from_data([[0.0f32, 1.0]], &device);
+        assert!(continuous
+            .contains(continuous_sample)
+            .all()
+            .into_scalar());
+        assert_eq!(continuous.view(&[0.0f32, 1.0]).particle(0), &[0.0, 1.0]);
+        assert_eq!(
+            continuous.random_state::<Flex, Float>(4, &device).dims(),
+            [4, 2]
+        );
+
+        let mut continuous_state: SamplerState<Flex, Float> =
+            SamplerState::from_space(&HomogeneousSpace::new(continuous, 1), 2, &device);
+        let continuous_model = ZeroModel;
+        let continuous_sampler = Metropolis::new(GaussianProposal::new(0.1f32));
+        continuous_sampler
+            .clone()
+            .step(&HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1), &continuous_model, &mut continuous_state);
+        assert_eq!(continuous_state.chains.dims(), [2, 2]);
+
+        let spin = Spin::half_integer(1);
+        assert_eq!(spin.sample_size(), 1);
+        let spin_sample: Tensor<Flex, 2, Int> = Tensor::from_data([[1i32]], &device);
+        assert!(spin
+            .contains(spin_sample)
+            .all()
+            .into_scalar());
+        assert_eq!(spin.view(&[1i32]), &[1]);
+        assert_eq!(spin.random_state::<Flex, Int>(4, &device).dims(), [4, 1]);
+
+        let mut spin_state: SamplerState<Flex, Int> =
+            SamplerState::from_space(&HomogeneousSpace::new(Spin::half_integer(1), 1), 2, &device);
+        let spin_model = ZeroModel;
+        let spin_sampler = Metropolis::new(LocalProposal);
+        spin_sampler.clone().step(
+            &HomogeneousSpace::new(Spin::half_integer(1), 1),
+            &spin_model,
+            &mut spin_state,
+        );
+        assert_eq!(spin_state.chains.dims(), [2, 1]);
     }
 
     #[derive(Clone, Copy, Debug)]
