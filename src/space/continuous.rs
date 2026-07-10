@@ -6,6 +6,7 @@ use num_traits::{Float, ToPrimitive};
 use crate::utils::float_opts;
 
 use super::core::{LocalSpace, RandomState, Space, ViewSpace};
+use super::homogeneous::HomogeneousSpace;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Particles<'a, T> {
@@ -137,6 +138,8 @@ impl<T: Float> RandomState for ContinuousSpace<T> {
         }
     }
 }
+
+pub type ParticleSpace<T> = HomogeneousSpace<ContinuousSpace<T>>;
 
 #[cfg(test)]
 mod tests {

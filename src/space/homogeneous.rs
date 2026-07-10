@@ -161,6 +161,18 @@ mod tests {
     }
 
     #[test]
+    fn continuous_product_space_views_particles() {
+        let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
+        let space = HomogeneousSpace::new(local, 3);
+        let sample = [0.0f32, 1.0, -1.0, 0.5, 0.25, -0.25];
+        let view = space.view(&sample);
+        assert_eq!(view.n_particles(), 3);
+        assert_eq!(view.dim(), 2);
+        assert_eq!(view.particle(1), &[-1.0, 0.5]);
+        assert_eq!(view.particle(2), &[0.25, -0.25]);
+    }
+
+    #[test]
     fn spin_product_space_views_flat_sample() {
         let local = Spin::half_integer(1);
         let space = HomogeneousSpace::new(local, 3);
