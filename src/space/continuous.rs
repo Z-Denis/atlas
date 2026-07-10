@@ -1,14 +1,11 @@
-use crate::layout::Layout;
-
 use burn::tensor::{BasicOps, Bool, Distribution, Numeric, Tensor, backend::Backend};
 use burn_backend::Element;
 use burn_backend::tensor::Ordered;
-use num_traits::Float;
-use num_traits::ToPrimitive;
+use num_traits::{Float, ToPrimitive};
 
 use crate::utils::float_opts;
 
-use super::core::{Space, ViewSpace};
+use super::core::{LocalSpace, RandomState, Space, ViewSpace};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Particles<'a, T> {
@@ -38,29 +35,31 @@ impl<'a, T> Particles<'a, T> {
     }
 }
 
+/// Bounded or unbounded continuous local space of fixed dimension.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ContinuousSpace<L, T> {
-    layout: L,
+pub struct ContinuousSpace<T> {
+    dim: usize,
     lower: T,
     upper: T,
 }
 
-impl<L: Layout, T: Float> ContinuousSpace<L, T> {
-    pub fn new(layout: L, lower: T, upper: T) -> Self {
+impl<T: Float> ContinuousSpace<T> {
+    pub fn new(lower: T, upper: T, dim: usize) -> Self {
+        assert!(dim > 0);
         assert!(lower <= upper);
-        Self {
-            layout,
-            lower,
-            upper,
-        }
+        Self { dim, lower, upper }
+    }
+
+    pub fn dim(&self) -> usize {
+        self.dim
     }
 }
 
-impl<L: Layout, T: Float> Space for ContinuousSpace<L, T> {
+impl<T: Float> Space for ContinuousSpace<T> {
     type Scalar = T;
 
     fn sample_size(&self) -> usize {
-        self.layout.len()
+        self.dim
     }
 
     fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
@@ -98,25 +97,27 @@ impl<L: Layout, T: Float> Space for ContinuousSpace<L, T> {
     }
 }
 
-impl<L: Layout + 'static, T: Float + 'static> ViewSpace for ContinuousSpace<L, T> {
+impl<T: Float + 'static> ViewSpace for ContinuousSpace<T> {
     type View<'a>
-        = &'a [T]
+        = Particles<'a, T>
     where
         Self: 'a,
         Self::Scalar: 'a;
 
     fn view<'a>(&self, sample: &'a [Self::Scalar]) -> Self::View<'a> {
         debug_assert_eq!(sample.len(), self.sample_size());
-        sample
+        Particles::new(sample, self.dim)
     }
 }
 
-impl<L: Layout, T: Float> ContinuousSpace<L, T> {
-    pub fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+impl<T: Float> LocalSpace for ContinuousSpace<T> {}
+
+impl<T: Float> RandomState for ContinuousSpace<T> {
+    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
     where
         B: Backend,
-        K: Numeric<B, Elem = T>,
-        T: Clone + Element,
+        K: Numeric<B, Elem = Self::Scalar>,
+        Self::Scalar: Clone + Element,
     {
         if self.lower.is_finite() && self.upper.is_finite() {
             Tensor::<B, 2, K>::random(
@@ -143,18 +144,9 @@ mod tests {
     use burn::backend::Flex;
     use burn::tensor::Tensor;
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Chain(usize);
-
-    impl Layout for Chain {
-        fn len(&self) -> usize {
-            self.0
-        }
-    }
-
     #[test]
     fn bounded_contains() {
-        let space = ContinuousSpace::new(Chain(2), -1.0f32, 1.0);
+        let space = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let device = Default::default();
         let valid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 0.0]], [[1.0, -1.0]]], &device);
         let invalid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
@@ -164,7 +156,7 @@ mod tests {
 
     #[test]
     fn unbounded_contains() {
-        let space = ContinuousSpace::new(Chain(2), f32::NEG_INFINITY, f32::INFINITY);
+        let space = ContinuousSpace::new(f32::NEG_INFINITY, f32::INFINITY, 2);
         let device = Default::default();
         let sample: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
         assert!(space.contains(sample).all().into_scalar());
@@ -172,7 +164,7 @@ mod tests {
 
     #[test]
     fn random_state_has_shape() {
-        let space = ContinuousSpace::new(Chain(3), -1.0f32, 1.0);
+        let space = ContinuousSpace::new(-1.0f32, 1.0, 3);
         let device = Default::default();
         let state: Tensor<Flex, 2> = space.random_state(4, &device);
         assert_eq!(state.dims(), [4, 3]);
@@ -188,11 +180,10 @@ mod tests {
 
     #[test]
     fn particles_view_supports_d_gt_1() {
-        let space = ContinuousSpace::new(Chain(6), f32::NEG_INFINITY, f32::INFINITY);
-        let sample = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
-        let view = Particles::new(space.view(&sample), 2);
-        assert_eq!(view.n_particles(), 3);
+        let space = ContinuousSpace::new(f32::NEG_INFINITY, f32::INFINITY, 2);
+        let sample = [0.0f32, 1.0];
+        let view = space.view(&sample);
+        assert_eq!(view.n_particles(), 1);
         assert_eq!(view.particle(0), &[0.0, 1.0]);
-        assert_eq!(view.particle(2), &[4.0, 5.0]);
     }
 }

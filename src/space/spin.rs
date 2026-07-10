@@ -1,56 +1,55 @@
-use crate::layout::Layout;
-
 use burn::tensor::{BasicOps, Bool, Tensor, backend::Backend};
 use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
-use super::core::{Space, ViewSpace};
+use crate::utils::randint;
+
+use super::core::{LocalSpace, RandomState, Space, ViewSpace};
 use super::homogeneous::{HomogeneousProductSpace, HomogeneousSpace};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Spin {
     twice_s: usize,
+    local_states: Vec<i32>,
 }
 
 impl Spin {
     pub fn half_integer(n: usize) -> Self {
-        Self { twice_s: n }
-    }
-
-    pub fn integer(n: usize) -> Self {
-        Self { twice_s: 2 * n }
-    }
-
-    pub fn local_size(&self) -> usize {
-        self.twice_s + 1
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SpinSpace<L, T> {
-    space: HomogeneousSpace<L, T>,
-    spin: Spin,
-}
-
-impl<L: Layout, T: PartialEq> SpinSpace<L, T> {
-    pub fn new(layout: L, spin: Spin, local_states: Vec<T>) -> Self {
-        assert_eq!(local_states.len(), spin.local_size());
+        let twice_s = n;
+        let local_states = (0..=twice_s)
+            .map(|m| -(twice_s as i32) + 2 * m as i32)
+            .collect();
         Self {
-            space: HomogeneousSpace::new(layout, local_states),
-            spin,
+            twice_s,
+            local_states,
         }
     }
 
-    pub fn spin(&self) -> Spin {
-        self.spin
+    pub fn integer(n: usize) -> Self {
+        let twice_s = 2 * n;
+        let local_states = (0..=twice_s)
+            .map(|m| -(twice_s as i32) + 2 * m as i32)
+            .collect();
+        Self {
+            twice_s,
+            local_states,
+        }
+    }
+
+    pub fn local_size(&self) -> usize {
+        self.local_states.len()
+    }
+
+    pub fn local_states(&self) -> &[i32] {
+        &self.local_states
     }
 }
 
-impl<L: Layout, T: PartialEq> Space for SpinSpace<L, T> {
-    type Scalar = T;
+impl Space for Spin {
+    type Scalar = i32;
 
     fn sample_size(&self) -> usize {
-        self.space.sample_size()
+        1
     }
 
     fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
@@ -59,42 +58,70 @@ impl<L: Layout, T: PartialEq> Space for SpinSpace<L, T> {
         K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
         Self::Scalar: Clone + Element,
     {
-        self.space.contains(samples)
+        let device = samples.device();
+        let dims = samples.dims();
+        let sample_size = dims[D - 1];
+        let mut out_dims = dims;
+        out_dims[D - 1] = 1;
+
+        if sample_size != 1 {
+            return Tensor::<B, D, Bool>::zeros(out_dims, &device);
+        }
+
+        let flat_size = dims[..D - 1].iter().product::<usize>();
+        let flat = samples.reshape([flat_size, sample_size]);
+        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device)
+            .unsqueeze_dim::<2>(0)
+            .expand([flat_size, self.local_size()]);
+
+        flat.expand([flat_size, self.local_size()])
+            .equal(states)
+            .any_dim(1)
+            .reshape(out_dims)
     }
 }
 
-impl<L: Layout + 'static, T: PartialEq + 'static> ViewSpace for SpinSpace<L, T> {
+impl ViewSpace for Spin {
     type View<'a>
-        = &'a [T]
+        = &'a [i32]
     where
         Self: 'a,
         Self::Scalar: 'a;
 
     fn view<'a>(&self, sample: &'a [Self::Scalar]) -> Self::View<'a> {
-        self.space.view(sample)
+        debug_assert_eq!(sample.len(), 1);
+        sample
     }
 }
 
-impl<L: Layout, T: PartialEq> HomogeneousProductSpace for SpinSpace<L, T> {
-    fn local_states(&self) -> &[Self::Scalar] {
-        self.space.local_states()
+impl LocalSpace for Spin {}
+
+impl RandomState for Spin {
+    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    where
+        B: Backend,
+        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::Scalar: Clone + Element,
+    {
+        let states = Tensor::<B, 1, K>::from_data(self.local_states(), device);
+        let indices = randint::<B, 2>([n_chains, 1], 0, self.local_size() as i64, device);
+        states.take::<2, 2>(0, indices)
     }
 }
+
+impl HomogeneousProductSpace for Spin {
+    fn local_states(&self) -> &[Self::Scalar] {
+        self.local_states()
+    }
+}
+
+pub type SpinSpace = HomogeneousSpace<Spin>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use burn::backend::Flex;
     use burn::tensor::{Int, Tensor};
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Chain(usize);
-
-    impl Layout for Chain {
-        fn len(&self) -> usize {
-            self.0
-        }
-    }
 
     #[test]
     fn spin_constructors_work() {
@@ -104,12 +131,12 @@ mod tests {
 
     #[test]
     fn spin_space_uses_homogeneous_structure() {
-        let space = SpinSpace::new(Chain(3), Spin::integer(1), vec![-1i32, 0, 1]);
+        let local = Spin::integer(1);
+        let space = HomogeneousSpace::new(local, 3);
         let device = Default::default();
-        let sample: Tensor<Flex, 2, Int> = Tensor::from_data([[-1i32, 0, 1]], &device);
+        let sample: Tensor<Flex, 2, Int> = Tensor::from_data([[-2i32, 0, 2]], &device);
         assert_eq!(space.sample_size(), 3);
-        assert_eq!(space.local_size(), 3);
         assert!(space.contains(sample.clone()).into_scalar());
-        assert_eq!(space.view(&[-1i32, 0, 1]), &[-1i32, 0, 1]);
+        assert_eq!(space.view(&[-2i32, 0, 2]).particle(1), &[0]);
     }
 }

@@ -36,6 +36,6 @@ pub use sampler::{
     VariationalState,
 };
 pub use space::{
-    ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, LogDensity, Particles, Samples,
-    Space, Spin, SpinSpace, ViewSpace,
+    ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, LocalSpace, LogDensity,
+    Particles, RandomState, Samples, Space, Spin, SpinSpace, ViewSpace,
 };

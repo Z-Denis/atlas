@@ -1,4 +1,4 @@
-use burn::tensor::{BasicOps, Bool, Tensor, backend::Backend};
+use burn::tensor::{BasicOps, Bool, Numeric, Tensor, backend::Backend};
 use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
@@ -16,6 +16,18 @@ pub trait Space {
     where
         B: Backend,
         K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::Scalar: Clone + Element;
+}
+
+/// Marker trait for a structured local degree of freedom.
+pub trait LocalSpace: Space {}
+
+/// Extension trait for spaces that can generate initial states.
+pub trait RandomState: Space {
+    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    where
+        B: Backend,
+        K: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element;
 }
 
