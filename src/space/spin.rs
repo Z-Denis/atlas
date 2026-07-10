@@ -2,6 +2,7 @@ use crate::layout::Layout;
 
 use burn::tensor::{BasicOps, Bool, Tensor, backend::Backend};
 use burn_backend::Element;
+use burn_backend::tensor::Ordered;
 
 use super::core::{Space, ViewSpace};
 use super::homogeneous::{HomogeneousProductSpace, HomogeneousSpace};
@@ -55,7 +56,7 @@ impl<L: Layout, T: PartialEq> Space for SpinSpace<L, T> {
     fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
+        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
         Self::Scalar: Clone + Element,
     {
         self.space.contains(samples)

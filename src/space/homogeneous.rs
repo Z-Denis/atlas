@@ -1,5 +1,6 @@
 use burn::tensor::{BasicOps, Bool, Int, Tensor, backend::Backend};
 use burn_backend::Element;
+use burn_backend::tensor::Ordered;
 
 use crate::layout::Layout;
 use crate::utils::randint;
@@ -91,7 +92,7 @@ impl<L: Layout, T: PartialEq> Space for HomogeneousSpace<L, T> {
     fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = T>,
+        K: BasicOps<B, Elem = T> + Ordered<B>,
         T: Clone + Element,
     {
         let device = samples.device();
