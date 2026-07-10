@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn gaussian_proposal_updates_continuous_state() {
         let local = ContinuousSpace::new(f32::NEG_INFINITY, f32::INFINITY, 2);
-        let space = HomogeneousSpace::new(local, 1);
+        let space = HomogeneousSpace::new(local, 3);
         let model = ZeroModel;
         let sampler = Metropolis::new(GaussianProposal::new(0.1f32));
         let device: <Flex as BackendTypes>::Device = Default::default();

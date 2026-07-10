@@ -8,6 +8,7 @@
 //! - `Samples<B, D, K>` for Burn-backed contiguous storage with batch axes
 //! - `LogDensity` for sampler-facing Burn tensor evaluation
 //! - `Spin` and `SpinSpace` for homogeneous spin domains
+//! - `ContinuousSpace` and `ParticleSpace` for homogeneous particle domains
 //! - `random_state()` on homogeneous product spaces for chain initialization
 //! - `sample()` and `samples` on `VariationalState` for NetKet-like sampling
 //! - `Proposal`, `LogDensityBatch`, `LocalProposal`, `Metropolis`,
@@ -22,7 +23,6 @@
 //! `sample()` method and a `samples` buffer, mirroring the NetKet user
 //! interface.
 
-pub mod layout;
 pub mod model;
 pub mod observable;
 pub mod optimizer;
@@ -30,12 +30,11 @@ pub mod sampler;
 pub mod space;
 mod utils;
 
-pub use layout::Layout;
 pub use sampler::{
     GaussianProposal, LocalProposal, LogDensityBatch, Metropolis, Proposal, SamplerState,
     VariationalState,
 };
 pub use space::{
-    ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, LocalSpace, LogDensity, Particles,
-    RandomState, Samples, Space, Spin, SpinSpace, ViewSpace,
+    ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, LocalSpace, LogDensity,
+    ParticleSpace, Particles, RandomState, Samples, Space, Spin, SpinSpace, ViewSpace,
 };
