@@ -1,19 +1,18 @@
-use burn::tensor::{BasicOps, Bool, Int, Tensor, backend::Backend};
+use burn::tensor::{BasicOps, Bool, Int, Numeric, Tensor, backend::Backend};
 use burn_backend::Element;
+use burn_backend::tensor::Ordered;
 
-use crate::layout::Layout;
-use crate::utils::randint;
+use super::continuous::Particles;
+use super::core::{LocalSpace, RandomState, Space, ViewSpace};
 
-use super::core::{Space, ViewSpace};
-
-pub trait HomogeneousProductSpace: Space {
+/// Extension trait for local spaces with a finite set of local states.
+pub trait HomogeneousProductSpace: LocalSpace {
     fn local_states(&self) -> &[Self::Scalar];
 
     fn local_size(&self) -> usize {
         self.local_states().len()
     }
 
-    /// Return the local-state indices for each value.
     fn indices_of<B, K>(&self, values: Tensor<B, 1, K>) -> Tensor<B, 1, Int>
     where
         B: Backend,
@@ -35,7 +34,6 @@ pub trait HomogeneousProductSpace: Space {
             .squeeze_dim::<1>(1)
     }
 
-    /// Return the local states for each local-state index.
     fn states_at<B, K>(&self, indices: Tensor<B, 1, Int>) -> Tensor<B, 1, K>
     where
         B: Backend,
@@ -46,53 +44,43 @@ pub trait HomogeneousProductSpace: Space {
         let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device);
         states.select(0, indices)
     }
-
-    /// Generate `n_chains` random configurations with shape `[n_chains, sample_size]`.
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
-    where
-        B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
-        Self::Scalar: Clone + Element,
-    {
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), device);
-        let indices = randint::<B, 2>(
-            [n_chains, self.sample_size()],
-            0,
-            self.local_size() as i64,
-            device,
-        );
-
-        states.take::<2, 2>(0, indices)
-    }
 }
 
+/// Homogeneous product of a local space.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HomogeneousSpace<L, T> {
-    layout: L,
-    local_states: Vec<T>,
+pub struct HomogeneousSpace<L> {
+    local: L,
+    n: usize,
 }
 
-impl<L: Layout, T: PartialEq> HomogeneousSpace<L, T> {
-    pub fn new(layout: L, local_states: Vec<T>) -> Self {
-        Self {
-            layout,
-            local_states,
-        }
+impl<L> HomogeneousSpace<L> {
+    pub fn new(local: L, n: usize) -> Self {
+        assert!(n > 0);
+        Self { local, n }
+    }
+
+    pub fn local(&self) -> &L {
+        &self.local
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.n
     }
 }
 
-impl<L: Layout, T: PartialEq> Space for HomogeneousSpace<L, T> {
-    type Scalar = T;
+impl<L: Space> Space for HomogeneousSpace<L> {
+    type Scalar = L::Scalar;
 
     fn sample_size(&self) -> usize {
-        self.layout.len()
+        self.local.sample_size() * self.n
     }
 
     fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = T>,
-        T: Clone + Element,
+        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::Scalar: Clone + Element,
     {
         let device = samples.device();
         let dims = samples.dims();
@@ -104,88 +92,91 @@ impl<L: Layout, T: PartialEq> Space for HomogeneousSpace<L, T> {
             return Tensor::<B, D, Bool>::zeros(out_dims, &device);
         }
 
+        let local_size = self.local.sample_size();
         let flat_size = dims[..D - 1].iter().product::<usize>();
         if sample_size == 0 {
             return Tensor::<B, D, Bool>::ones(out_dims, &device);
         }
 
-        let local_size = self.local_size();
-        let flat = samples.reshape([flat_size, sample_size]);
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device)
-            .unsqueeze_dim::<2>(0)
-            .unsqueeze_dim::<3>(0)
-            .expand([flat_size, sample_size, local_size]);
+        let flat = samples.reshape([flat_size * self.n, local_size]);
+        let valid = self.local.contains(flat);
 
-        flat.unsqueeze_dim::<3>(2)
-            .expand([flat_size, sample_size, local_size])
-            .equal(states)
-            .any_dim(2)
+        valid
+            .reshape([flat_size, self.n])
             .all_dim(1)
             .reshape(out_dims)
     }
 }
 
-impl<L: Layout + 'static, T: PartialEq + 'static> ViewSpace for HomogeneousSpace<L, T> {
+impl<L: Space + 'static> ViewSpace for HomogeneousSpace<L> {
     type View<'a>
-        = &'a [T]
+        = Particles<'a, L::Scalar>
     where
         Self: 'a,
         Self::Scalar: 'a;
 
     fn view<'a>(&self, sample: &'a [Self::Scalar]) -> Self::View<'a> {
         debug_assert_eq!(sample.len(), self.sample_size());
-        debug_assert!(sample.iter().all(|x| self.local_states.contains(x)));
-        sample
+        Particles::new(sample, self.local.sample_size())
     }
 }
 
-impl<L: Layout, T: PartialEq> HomogeneousProductSpace for HomogeneousSpace<L, T> {
+impl<L: LocalSpace> LocalSpace for HomogeneousSpace<L> {}
+
+impl<L: Space + RandomState> RandomState for HomogeneousSpace<L> {
+    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    where
+        B: Backend,
+        K: Numeric<B, Elem = Self::Scalar>,
+        Self::Scalar: Clone + Element,
+    {
+        self.local
+            .random_state::<B, K>(n_chains * self.n, device)
+            .reshape([n_chains, self.sample_size()])
+    }
+}
+
+impl<L: HomogeneousProductSpace> HomogeneousProductSpace for HomogeneousSpace<L> {
     fn local_states(&self) -> &[Self::Scalar] {
-        &self.local_states
+        self.local.local_states()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::space::{ContinuousSpace, Spin};
     use burn::backend::Flex;
-    use burn::tensor::{Int, Tensor};
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Chain(usize);
-
-    impl Layout for Chain {
-        fn len(&self) -> usize {
-            self.0
-        }
-    }
+    use burn::tensor::Tensor;
 
     #[test]
-    fn checks_domain() {
-        let space = HomogeneousSpace::new(Chain(4), vec![0i32, 1]);
-        assert_eq!(space.sample_size(), 4);
-        assert_eq!(space.local_size(), 2);
+    fn continuous_product_space_checks_domain() {
+        let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
+        let space = HomogeneousSpace::new(local, 2);
         let device = Default::default();
-        let valid = Tensor::<Flex, 3, Int>::from_data([[[0, 1, 1, 0]], [[1, 0, 1, 0]]], &device);
-        let invalid = Tensor::<Flex, 3, Int>::from_data([[[0, 1, 2, 1]], [[1, 0, 1, 0]]], &device);
-        assert_eq!(space.contains(valid.clone()).dims(), [2, 1, 1]);
+        let valid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 0.0, 1.0, -1.0]]], &device);
+        let invalid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0, 1.0, -1.0]]], &device);
         assert!(space.contains(valid).all().into_scalar());
         assert!(!space.contains(invalid).all().into_scalar());
     }
 
     #[test]
-    fn views_flat_sample() {
-        let space = HomogeneousSpace::new(Chain(3), vec![0i32, 1, 2]);
-        let sample = [1i32, 0, 2];
+    fn spin_product_space_views_flat_sample() {
+        let local = Spin::half_integer(1);
+        let space = HomogeneousSpace::new(local, 3);
+        let sample = [-1i32, 1, -1];
         let view = space.view(&sample);
-        assert_eq!(view, &sample);
+        assert_eq!(view.n_particles(), 3);
+        assert_eq!(view.dim(), 1);
+        assert_eq!(view.particle(1), &[1]);
     }
 
     #[test]
-    fn generates_random_state() {
+    fn product_space_random_state_has_shape() {
+        let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
+        let space = HomogeneousSpace::new(local, 3);
         let device = Default::default();
-        let space = HomogeneousSpace::new(Chain(4), vec![0i32, 1]);
-        let state: Tensor<Flex, 2, Int> = space.random_state(3, &device);
-        assert_eq!(state.dims(), [3, 4]);
+        let state: Tensor<Flex, 2> = space.random_state(4, &device);
+        assert_eq!(state.dims(), [4, 6]);
     }
 }
