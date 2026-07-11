@@ -1,10 +1,9 @@
 use burn::module::{Module, Param};
 use burn::tensor::{
-    Float, FloatDType, Numeric, Tensor, TensorCreationOptions, activation::softplus,
-    backend::Backend,
+    Float, FloatDType, Tensor, TensorCreationOptions, activation::softplus, backend::Backend,
 };
 
-use super::{IntoFloatTensor, Model};
+use super::Model;
 use crate::space::Space;
 
 /// Minimal restricted Boltzmann machine.
@@ -55,22 +54,21 @@ where
 {
     type ParamDType = Float;
 
-    fn log_value(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
-    where
-        S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
-    {
+    fn param_dtype(&self) -> FloatDType {
+        self.weight.val().dtype().into()
+    }
+
+    fn log_value(&self, space: &S, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
         assert_eq!(space.sample_size(), self.visible_size);
         assert_eq!(
             self.weight.val().dims(),
             [self.visible_size, self.hidden_size]
         );
-        let dtype: FloatDType = self.weight.val().dtype().into();
-        let flat = <S::DType as IntoFloatTensor<B, 2>>::into_float(samples, dtype);
         let visible_bias = self.visible_bias.val().unsqueeze_dim(1);
         let hidden_bias = self.hidden_bias.val().unsqueeze_dim(0);
 
-        let visible = flat.clone().matmul(visible_bias);
-        let hidden = softplus(flat.matmul(self.weight.val()) + hidden_bias, 1.0).sum_dim(1);
+        let visible = samples.clone().matmul(visible_bias);
+        let hidden = softplus(samples.matmul(self.weight.val()) + hidden_bias, 1.0).sum_dim(1);
 
         (visible + hidden).squeeze_dim::<1>(1)
     }

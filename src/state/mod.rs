@@ -2,9 +2,36 @@ use burn::tensor::{BasicOps, Numeric, Tensor, TensorCreationOptions, backend::Ba
 use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
-use crate::model::{IntoFloatTensor, Model};
+use crate::model::Model;
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
+use burn::tensor::FloatDType;
+use burn_backend::tensor::{Float, TensorKind};
+
+#[doc(hidden)]
+pub trait IntoFloatTensor<B: Backend, const D: usize>: TensorKind<B> {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> Tensor<B, D, Float>;
+}
+
+impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for Float {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> Tensor<B, D, Float> {
+        tensor.cast(dtype)
+    }
+}
+
+impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for burn::tensor::Int {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> Tensor<B, D, Float> {
+        tensor.cast(dtype)
+    }
+}
+
+fn into_model_tensor<B, K>(samples: Tensor<B, 2, K>, dtype: FloatDType) -> Tensor<B, 2, Float>
+where
+    B: Backend,
+    K: IntoFloatTensor<B, 2>,
+{
+    K::into_float(samples, dtype)
+}
 
 /// Marker for the ambient state space interpreted by a variational state.
 ///
@@ -49,11 +76,16 @@ impl StateSpace for Hilbert {
 struct StateLogDensity<'a, M, SS> {
     model: &'a M,
     state_space: &'a SS,
+    param_dtype: FloatDType,
 }
 
 impl<'a, M, SS> StateLogDensity<'a, M, SS> {
-    fn new(model: &'a M, state_space: &'a SS) -> Self {
-        Self { model, state_space }
+    fn new(model: &'a M, state_space: &'a SS, param_dtype: FloatDType) -> Self {
+        Self {
+            model,
+            state_space,
+            param_dtype,
+        }
     }
 }
 
@@ -141,7 +173,7 @@ where
         S::DType: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
-        M: Model<S, B>,
+        M: Model<S, B, ParamDType = Float>,
         SS: StateSpace,
     {
         let sweep_size = self.space.sample_size();
@@ -149,7 +181,8 @@ where
         let device = self.sampler_state.chains.device();
         let sampler = &self.sampler;
         // Build the private bridge from the model and state space.
-        let log_density = StateLogDensity::new(&self.model, &self.state_space);
+        let log_density =
+            StateLogDensity::new(&self.model, &self.state_space, self.model.param_dtype());
 
         for sample_idx in 0..self.n_samples_per_chain {
             for _ in 0..sweep_size {
@@ -168,16 +201,18 @@ where
     /// Evaluate the model on the collected samples buffer.
     pub fn log_value(&self) -> Tensor<B, 1>
     where
-        M: Model<S, B>,
+        M: Model<S, B, ParamDType = Float>,
     {
-        self.model.log_value(&self.space, self.samples.clone())
+        let samples = into_model_tensor(self.samples.clone(), self.model.param_dtype());
+        self.model.log_value(&self.space, samples)
     }
 
     /// Evaluate the model on arbitrary configurations.
     pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
     where
-        M: Model<S, B>,
+        M: Model<S, B, ParamDType = Float>,
     {
+        let samples = into_model_tensor(samples, self.model.param_dtype());
         self.model.log_value(&self.space, samples)
     }
 }
@@ -187,10 +222,11 @@ where
     S: Space,
     B: Backend,
     S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
-    M: Model<S, B>,
+    M: Model<S, B, ParamDType = Float>,
     SS: StateSpace,
 {
     fn log_density(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
+        let samples = into_model_tensor(samples, self.param_dtype);
         self.state_space
             .log_density(self.model.log_value(space, samples))
     }

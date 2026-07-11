@@ -2,7 +2,7 @@ use crate::model::Model;
 use crate::sampler::LogDensity;
 use crate::space::Space;
 use burn::tensor::{BasicOps, Tensor, TensorCreationOptions, backend::Backend};
-use burn_backend::tensor::TensorKind;
+use burn_backend::tensor::{Float, TensorKind};
 
 fn zero_log_values<B, K>(samples: &Tensor<B, 2, K>) -> Tensor<B, 1>
 where
@@ -22,11 +22,11 @@ impl<S, B> Model<S, B> for ZeroModel
 where
     S: Space,
     B: Backend,
-    S::DType: TensorKind<B> + BasicOps<B>,
+    Float: TensorKind<B> + BasicOps<B>,
 {
     type ParamDType = burn::tensor::Float;
 
-    fn log_value(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
+    fn log_value(&self, _space: &S, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
         zero_log_values(&samples)
     }
 }
