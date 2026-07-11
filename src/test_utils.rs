@@ -13,7 +13,7 @@ where
 {
     fn log_value<K>(&self, _space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
     where
-        K: Numeric<B>,
+        K: Numeric<B> + crate::model::IntoFloatTensor<B, 2>,
     {
         Tensor::<B, 1>::zeros(
             [samples.dims()[0]],

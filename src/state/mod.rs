@@ -2,7 +2,7 @@ use burn::tensor::{BasicOps, Numeric, Tensor, TensorCreationOptions, backend::Ba
 use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
-use crate::model::Model;
+use crate::model::{IntoFloatTensor, Model};
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
 
@@ -64,7 +64,7 @@ impl<'a, M, SS> StateLogDensity<'a, M, SS> {
 pub struct VariationalState<M, S: Space, B, K, P, SS = Simplex>
 where
     B: Backend,
-    K: BasicOps<B> + Numeric<B>,
+    K: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
 {
     pub model: M,
     pub space: S,
@@ -78,7 +78,7 @@ where
 impl<M, S: Space, B, K, P, SS> VariationalState<M, S, B, K, P, SS>
 where
     B: Backend,
-    K: BasicOps<B> + Numeric<B>,
+    K: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
 {
     pub fn new(
         model: M,
@@ -138,7 +138,7 @@ where
     where
         S: Space,
         B: Backend,
-        K: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B>,
+        K: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S, K>,
         M: Model<S, B>,
@@ -186,7 +186,7 @@ impl<'a, M, S, B, K, SS> LogDensity<B, S, K> for StateLogDensity<'a, M, SS>
 where
     S: Space,
     B: Backend,
-    K: Numeric<B>,
+    K: Numeric<B> + IntoFloatTensor<B, 2>,
     M: Model<S, B>,
     SS: StateSpace,
 {

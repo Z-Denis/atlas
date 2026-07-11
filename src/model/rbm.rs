@@ -1,7 +1,7 @@
 use burn::module::{Module, Param};
-use burn::tensor::{Numeric, Tensor, activation::softplus, backend::Backend};
+use burn::tensor::{FloatDType, Numeric, Tensor, activation::softplus, backend::Backend};
 
-use super::Model;
+use super::{IntoFloatTensor, Model};
 use crate::space::Space;
 
 /// Minimal restricted Boltzmann machine.
@@ -45,17 +45,15 @@ where
 {
     fn log_value<K>(&self, space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
     where
-        K: Numeric<B>,
+        K: Numeric<B> + IntoFloatTensor<B, 2>,
     {
         assert_eq!(space.sample_size(), self.visible_size);
         assert_eq!(
             self.weight.val().dims(),
             [self.visible_size, self.hidden_size]
         );
-        let batch_size = samples.dims()[0];
-        let device = samples.device();
-        let flat = Tensor::<B, 2>::from_data(samples.into_data().convert::<f32>(), &device)
-            .reshape([batch_size, self.visible_size]);
+        let dtype: FloatDType = self.weight.val().dtype().into();
+        let flat = <K as IntoFloatTensor<B, 2>>::into_float(samples, dtype);
         let visible_bias = self.visible_bias.val().unsqueeze_dim(1);
         let hidden_bias = self.hidden_bias.val().unsqueeze_dim(0);
 
