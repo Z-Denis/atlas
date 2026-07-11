@@ -19,27 +19,9 @@ pub use rbm::Rbm;
 mod tests {
     use super::*;
     use crate::space::ContinuousSpace;
+    use crate::test_utils::ZeroModel;
     use burn::backend::NdArray;
-    use burn::tensor::{Float, Tensor, TensorCreationOptions};
-
-    #[derive(Clone, Copy, Debug)]
-    struct ZeroModel;
-
-    impl<B: Backend> Model<ContinuousSpace<f32>, B> for ZeroModel {
-        fn log_value<K>(
-            &self,
-            _space: &ContinuousSpace<f32>,
-            samples: Tensor<B, 2, K>,
-        ) -> Tensor<B, 1>
-        where
-            K: Numeric<B>,
-        {
-            Tensor::<B, 1>::zeros(
-                [samples.dims()[0]],
-                TensorCreationOptions::<B>::new(samples.device()),
-            )
-        }
-    }
+    use burn::tensor::{Float, Tensor};
 
     #[test]
     fn model_provides_log_value() {

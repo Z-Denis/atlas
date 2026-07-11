@@ -192,27 +192,9 @@ mod tests {
     use crate::sampler::LocalProposal;
     use crate::space::HomogeneousSpace;
     use crate::space::Spin;
+    use crate::test_utils::ZeroModel;
     use burn::backend::Flex;
     use burn::tensor::{Int, Tensor};
-
-    #[derive(Clone, Copy, Debug)]
-    struct ZeroModel;
-
-    impl<S, B> Model<S, B> for ZeroModel
-    where
-        S: Space,
-        B: Backend,
-    {
-        fn log_value<K>(&self, _space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
-        where
-            K: Numeric<B>,
-        {
-            Tensor::<B, 1>::zeros(
-                [samples.dims()[0]],
-                TensorCreationOptions::<B>::new(samples.device()),
-            )
-        }
-    }
 
     #[test]
     fn log_value_uses_collected_samples() {

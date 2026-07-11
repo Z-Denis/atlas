@@ -223,50 +223,14 @@ impl<P> Metropolis<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Model;
     use crate::space::{
         ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, Spin, ViewSpace,
     };
+    use crate::test_utils::{ZeroModel, ints, zero_log_density};
     use crate::{Simplex, VariationalState};
     use burn::backend::Flex;
-    use burn::tensor::backend::{Backend, BackendTypes};
-    use burn::tensor::{Float, Int, Tensor, TensorCreationOptions};
-
-    fn ints<const D: usize>(tensor: Tensor<Flex, D, Int>) -> Vec<i32> {
-        tensor.into_data().to_vec::<i32>().unwrap()
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    struct ZeroModel;
-
-    impl<S, B, K> LogDensity<B, S, K> for ZeroModel
-    where
-        B: Backend,
-        K: Numeric<B>,
-    {
-        fn log_density(&self, _space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1> {
-            Tensor::<B, 1>::zeros(
-                [samples.dims()[0]],
-                TensorCreationOptions::<B>::float().with_device(samples.device()),
-            )
-        }
-    }
-
-    impl<S, B> Model<S, B> for ZeroModel
-    where
-        S: Space,
-        B: Backend,
-    {
-        fn log_value<K>(&self, _space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
-        where
-            K: Numeric<B>,
-        {
-            Tensor::<B, 1>::zeros(
-                [samples.dims()[0]],
-                TensorCreationOptions::<B>::float().with_device(samples.device()),
-            )
-        }
-    }
+    use burn::tensor::backend::BackendTypes;
+    use burn::tensor::{Float, Int, Tensor};
 
     #[test]
     fn sampler_state_tracks_chain_state() {
@@ -281,17 +245,15 @@ mod tests {
     #[test]
     fn metropolis_updates_chain_state() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
-        let model = ZeroModel;
         let sampler = Metropolis::new(LocalProposal);
         let device: <Flex as BackendTypes>::Device = Default::default();
         let mut state: SamplerState<Flex, Int> = SamplerState::from_space(&space, 1, &device);
         let before = ints(state.chains.clone());
-
-        let log_density = |space: &HomogeneousSpace<Spin>, samples: Tensor<Flex, 2, Int>| {
-            model.log_value(space, samples)
-        };
-
-        sampler.clone().step(&space, log_density, &mut state);
+        sampler.clone().step(
+            &space,
+            zero_log_density::<HomogeneousSpace<Spin>, Flex, Int>,
+            &mut state,
+        );
 
         let data = ints(state.chains.clone());
         assert_ne!(data, before);
@@ -303,10 +265,9 @@ mod tests {
     #[test]
     fn variational_state_collects_batches() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
-        let model = ZeroModel;
         let sampler = Metropolis::new(LocalProposal);
         let mut state: VariationalState<_, _, Flex, Int, _, Simplex> =
-            VariationalState::from_space(model, space, Simplex, sampler, 1, 2);
+            VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
 
         state.sample();
 
@@ -320,10 +281,9 @@ mod tests {
         let n_chains = 4;
         let n_samples_per_chain = 4;
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
-        let model = ZeroModel;
         let sampler = Metropolis::new(LocalProposal);
         let mut state: VariationalState<_, _, Flex, Int, _, Simplex> = VariationalState::from_space(
-            model,
+            ZeroModel,
             space,
             Simplex,
             sampler,
@@ -367,19 +327,16 @@ mod tests {
     fn gaussian_proposal_updates_continuous_state() {
         let local = ContinuousSpace::new(f32::NEG_INFINITY, f32::INFINITY, 2);
         let space = HomogeneousSpace::new(local, 3);
-        let model = ZeroModel;
         let sampler = Metropolis::new(GaussianProposal::new(0.1f32));
         let device: <Flex as BackendTypes>::Device = Default::default();
         let mut state: SamplerState<Flex, Float> =
             SamplerState::new(space.random_state(1, &device));
         let before = state.chains.clone();
-
-        let log_density = |space: &HomogeneousSpace<ContinuousSpace<f32>>,
-                           samples: Tensor<Flex, 2, Float>| {
-            model.log_value(space, samples)
-        };
-
-        sampler.clone().step(&space, log_density, &mut state);
+        sampler.clone().step(
+            &space,
+            zero_log_density::<HomogeneousSpace<ContinuousSpace<f32>>, Flex, Float>,
+            &mut state,
+        );
 
         assert_eq!(state.chains.dims(), before.dims());
         assert_ne!(
@@ -406,16 +363,10 @@ mod tests {
 
         let mut continuous_state: SamplerState<Flex, Float> =
             SamplerState::from_space(&HomogeneousSpace::new(continuous, 1), 2, &device);
-        let continuous_model = ZeroModel;
         let continuous_sampler = Metropolis::new(GaussianProposal::new(0.1f32));
-        let continuous_log_density =
-            |space: &HomogeneousSpace<ContinuousSpace<f32>>, samples: Tensor<Flex, 2, Float>| {
-                continuous_model.log_value(space, samples)
-            };
-
         continuous_sampler.clone().step(
             &HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1),
-            continuous_log_density,
+            zero_log_density::<HomogeneousSpace<ContinuousSpace<f32>>, Flex, Float>,
             &mut continuous_state,
         );
         assert_eq!(continuous_state.chains.dims(), [2, 2]);
@@ -429,15 +380,10 @@ mod tests {
 
         let mut spin_state: SamplerState<Flex, Int> =
             SamplerState::from_space(&HomogeneousSpace::new(Spin::half_integer(1), 1), 2, &device);
-        let spin_model = ZeroModel;
         let spin_sampler = Metropolis::new(LocalProposal);
-        let spin_log_density = |space: &HomogeneousSpace<Spin>, samples: Tensor<Flex, 2, Int>| {
-            spin_model.log_value(space, samples)
-        };
-
         spin_sampler.clone().step(
             &HomogeneousSpace::new(Spin::half_integer(1), 1),
-            spin_log_density,
+            zero_log_density::<HomogeneousSpace<Spin>, Flex, Int>,
             &mut spin_state,
         );
         assert_eq!(spin_state.chains.dims(), [2, 1]);
@@ -459,17 +405,15 @@ mod tests {
     #[test]
     fn rejects_invalid_proposal() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
-        let model = ZeroModel;
         let sampler = Metropolis::new(BadProposal);
         let device: <Flex as BackendTypes>::Device = Default::default();
         let mut state: SamplerState<Flex, Int> = SamplerState::from_space(&space, 1, &device);
         let before = state.chains.clone();
-
-        let log_density = |space: &HomogeneousSpace<Spin>, samples: Tensor<Flex, 2, Int>| {
-            model.log_value(space, samples)
-        };
-
-        sampler.clone().step(&space, log_density, &mut state);
+        sampler.clone().step(
+            &space,
+            zero_log_density::<HomogeneousSpace<Spin>, Flex, Int>,
+            &mut state,
+        );
 
         assert_eq!(ints(state.chains.clone()), ints(before));
         assert_eq!(ints(state.accepted.clone()), vec![0]);

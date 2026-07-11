@@ -32,6 +32,8 @@ pub mod optimizer;
 pub mod sampler;
 pub mod space;
 pub mod state;
+#[cfg(test)]
+mod test_utils;
 mod utils;
 
 pub use model::{Model, Rbm};
