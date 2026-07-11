@@ -143,7 +143,7 @@ where
 
         for sample_idx in 0..self.n_samples_per_chain {
             for _ in 0..sweep_size {
-                sampler.step(space, &log_density, &mut self.sampler_state);
+                sampler.step(space, log_density, &mut self.sampler_state);
             }
 
             let start = sample_idx * n_chains;

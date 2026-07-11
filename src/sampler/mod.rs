@@ -183,7 +183,7 @@ impl<P> Metropolis<P> {
 }
 
 impl<P> Metropolis<P> {
-    pub fn step<S, F, B, K>(&self, space: &S, log_density: &F, state: &mut SamplerState<B, K>)
+    pub fn step<S, F, B, K>(&self, space: &S, log_density: F, state: &mut SamplerState<B, K>)
     where
         S: Space,
         B: Backend,
@@ -291,7 +291,7 @@ mod tests {
             model.log_value(space, samples)
         };
 
-        sampler.clone().step(&space, &log_density, &mut state);
+        sampler.clone().step(&space, log_density, &mut state);
 
         let data = ints(state.chains.clone());
         assert_ne!(data, before);
@@ -379,7 +379,7 @@ mod tests {
             model.log_value(space, samples)
         };
 
-        sampler.clone().step(&space, &log_density, &mut state);
+        sampler.clone().step(&space, log_density, &mut state);
 
         assert_eq!(state.chains.dims(), before.dims());
         assert_ne!(
@@ -415,7 +415,7 @@ mod tests {
 
         continuous_sampler.clone().step(
             &HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1),
-            &continuous_log_density,
+            continuous_log_density,
             &mut continuous_state,
         );
         assert_eq!(continuous_state.chains.dims(), [2, 2]);
@@ -437,7 +437,7 @@ mod tests {
 
         spin_sampler.clone().step(
             &HomogeneousSpace::new(Spin::half_integer(1), 1),
-            &spin_log_density,
+            spin_log_density,
             &mut spin_state,
         );
         assert_eq!(spin_state.chains.dims(), [2, 1]);
@@ -469,7 +469,7 @@ mod tests {
             model.log_value(space, samples)
         };
 
-        sampler.clone().step(&space, &log_density, &mut state);
+        sampler.clone().step(&space, log_density, &mut state);
 
         assert_eq!(ints(state.chains.clone()), ints(before));
         assert_eq!(ints(state.accepted.clone()), vec![0]);
