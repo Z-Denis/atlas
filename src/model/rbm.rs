@@ -4,7 +4,6 @@ use burn::tensor::{
 };
 
 use super::Model;
-use crate::space::Space;
 
 /// Minimal restricted Boltzmann machine.
 ///
@@ -47,19 +46,15 @@ impl<B: Backend> Rbm<B> {
     }
 }
 
-impl<S, B> Model<S, B> for Rbm<B>
+impl<B> Model<B> for Rbm<B>
 where
-    S: Space,
     B: Backend,
 {
-    type ParamDType = Float;
-
     fn param_dtype(&self) -> FloatDType {
         self.weight.val().dtype().into()
     }
 
-    fn log_value(&self, space: &S, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
-        assert_eq!(space.sample_size(), self.visible_size);
+    fn log_value(&self, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
         assert_eq!(
             self.weight.val().dims(),
             [self.visible_size, self.hidden_size]
@@ -77,18 +72,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::ContinuousSpace;
     use burn::backend::NdArray;
     use burn::tensor::Float;
 
     #[test]
     fn rbm_produces_log_value() {
         let device = Default::default();
-        let space = ContinuousSpace::new(-1.0f32, 1.0, 4);
         let rbm = Rbm::<NdArray>::new(4, 3, None, &device);
         let samples = Tensor::<NdArray, 2, Float>::from_data([[0.0, 1.0, 0.0, 1.0]], &device);
 
-        let density = rbm.log_value(&space, samples);
+        let density = rbm.log_value(samples);
 
         assert_eq!(density.dims(), [1]);
     }

@@ -18,15 +18,12 @@ where
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ZeroModel;
 
-impl<S, B> Model<S, B> for ZeroModel
+impl<B> Model<B> for ZeroModel
 where
-    S: Space,
     B: Backend,
     Float: TensorKind<B> + BasicOps<B>,
 {
-    type ParamDType = burn::tensor::Float;
-
-    fn log_value(&self, _space: &S, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
+    fn log_value(&self, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
         zero_log_values(&samples)
     }
 }

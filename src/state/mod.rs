@@ -173,7 +173,7 @@ where
         S::DType: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
-        M: Model<S, B, ParamDType = Float>,
+        M: Model<B>,
         SS: StateSpace,
     {
         let sweep_size = self.space.sample_size();
@@ -201,19 +201,19 @@ where
     /// Evaluate the model on the collected samples buffer.
     pub fn log_value(&self) -> Tensor<B, 1>
     where
-        M: Model<S, B, ParamDType = Float>,
+        M: Model<B>,
     {
         let samples = into_model_tensor(self.samples.clone(), self.model.param_dtype());
-        self.model.log_value(&self.space, samples)
+        self.model.log_value(samples)
     }
 
     /// Evaluate the model on arbitrary configurations.
     pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
     where
-        M: Model<S, B, ParamDType = Float>,
+        M: Model<B>,
     {
         let samples = into_model_tensor(samples, self.model.param_dtype());
-        self.model.log_value(&self.space, samples)
+        self.model.log_value(samples)
     }
 }
 
@@ -222,13 +222,12 @@ where
     S: Space,
     B: Backend,
     S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
-    M: Model<S, B, ParamDType = Float>,
+    M: Model<B>,
     SS: StateSpace,
 {
-    fn log_density(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
+    fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
         let samples = into_model_tensor(samples, self.param_dtype);
-        self.state_space
-            .log_density(self.model.log_value(space, samples))
+        self.state_space.log_density(self.model.log_value(samples))
     }
 }
 
