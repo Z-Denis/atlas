@@ -43,6 +43,19 @@ impl StateSpace for Hilbert {
     }
 }
 
+/// Adapter that turns a model plus state space into a sampler-facing density.
+#[derive(Clone, Copy, Debug)]
+struct StateLogDensity<'a, M, SS> {
+    model: &'a M,
+    state_space: &'a SS,
+}
+
+impl<'a, M, SS> StateLogDensity<'a, M, SS> {
+    fn new(model: &'a M, state_space: &'a SS) -> Self {
+        Self { model, state_space }
+    }
+}
+
 /// User-facing orchestration object.
 ///
 /// A variational state owns the model, sampler, chain state, and collected
@@ -133,17 +146,12 @@ where
         let sweep_size = self.space.sample_size();
         let n_chains = self.sampler_state.chains.dims()[0];
         let device = self.sampler_state.chains.device();
-        let model = &self.model;
-        let space = &self.space;
-        let state_space = &self.state_space;
         let sampler = &self.sampler;
-        let log_density = |space: &S, samples: Tensor<B, 2, K>| {
-            state_space.log_density(model.log_value(space, samples))
-        };
+        let log_density = StateLogDensity::new(&self.model, &self.state_space);
 
         for sample_idx in 0..self.n_samples_per_chain {
             for _ in 0..sweep_size {
-                sampler.step(space, log_density, &mut self.sampler_state);
+                sampler.step(&self.space, &log_density, &mut self.sampler_state);
             }
 
             let start = sample_idx * n_chains;
@@ -172,7 +180,7 @@ where
     }
 }
 
-impl<M, S, B, K, P, SS> LogDensity<B, S, K> for VariationalState<M, S, B, K, P, SS>
+impl<'a, M, S, B, K, SS> LogDensity<B, S, K> for StateLogDensity<'a, M, SS>
 where
     S: Space,
     B: Backend,

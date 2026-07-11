@@ -15,8 +15,7 @@
 //! - `random_state()` on homogeneous product spaces for chain initialization
 //! - `sample()` and `samples` on `VariationalState` for NetKet-like sampling
 //! - `Proposal`, `LogDensity`, `LocalProposal`, `Metropolis`, and
-//!   `SamplerState` for
-//!   Burn-native sampling
+//!   `SamplerState` for Burn-native sampling
 //!
 //! The crate keeps spaces as the domain of the models. Flat storage is
 //! canonical, while structure is recovered only through borrowed views when a
