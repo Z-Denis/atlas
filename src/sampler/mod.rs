@@ -250,8 +250,7 @@ mod tests {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
         let device: <Flex as BackendTypes>::Device = Default::default();
-        let mut state: SamplerState<Flex, Int> =
-            SamplerState::<Flex, Int>::from_space(&space, 1, &device);
+        let mut state = SamplerState::<Flex, Int>::from_space(&space, 1, &device);
         let before = ints(state.chains.clone());
         sampler.clone().step(&space, &ZeroModel, &mut state);
 
@@ -354,12 +353,11 @@ mod tests {
         assert_eq!(continuous.view(&[0.0f32, 1.0]).particle(0), &[0.0, 1.0]);
         assert_eq!(continuous.random_state::<Flex>(4, &device).dims(), [4, 2]);
 
-        let mut continuous_state: SamplerState<Flex, burn::tensor::Float> =
-            SamplerState::<Flex, burn::tensor::Float>::from_space(
-                &HomogeneousSpace::new(continuous, 1),
-                2,
-                &device,
-            );
+        let mut continuous_state = SamplerState::<Flex, burn::tensor::Float>::from_space(
+            &HomogeneousSpace::new(continuous, 1),
+            2,
+            &device,
+        );
         let continuous_sampler = Metropolis::new(GaussianProposal::new(0.1f32));
         continuous_sampler.clone().step(
             &HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1),
@@ -375,12 +373,11 @@ mod tests {
         assert_eq!(spin.view(&[1i32]), &[1]);
         assert_eq!(spin.random_state::<Flex>(4, &device).dims(), [4, 1]);
 
-        let mut spin_state: SamplerState<Flex, burn::tensor::Int> =
-            SamplerState::<Flex, burn::tensor::Int>::from_space(
-                &HomogeneousSpace::new(Spin::half_integer(1), 1),
-                2,
-                &device,
-            );
+        let mut spin_state = SamplerState::<Flex, burn::tensor::Int>::from_space(
+            &HomogeneousSpace::new(Spin::half_integer(1), 1),
+            2,
+            &device,
+        );
         let spin_sampler = Metropolis::new(LocalProposal);
         spin_sampler.clone().step(
             &HomogeneousSpace::new(Spin::half_integer(1), 1),
@@ -408,8 +405,7 @@ mod tests {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(BadProposal);
         let device: <Flex as BackendTypes>::Device = Default::default();
-        let mut state: SamplerState<Flex, Int> =
-            SamplerState::<Flex, Int>::from_space(&space, 1, &device);
+        let mut state = SamplerState::<Flex, Int>::from_space(&space, 1, &device);
         let before = state.chains.clone();
         sampler.clone().step(&space, &ZeroModel, &mut state);
 
