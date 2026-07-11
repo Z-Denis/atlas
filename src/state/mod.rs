@@ -8,8 +8,8 @@ use crate::space::{RandomState, Samples, Space};
 
 /// Marker for the ambient state space interpreted by a variational state.
 ///
-/// The state space decides how to turn a model's `log_value` into a sampler
-/// facing `log_density`.
+/// The state space decides how a model's `log_value` is exposed to the
+/// sampler as a `log_density`.
 pub trait StateSpace {
     fn log_density<B>(&self, log_value: Tensor<B, 1>) -> Tensor<B, 1>
     where
@@ -43,7 +43,8 @@ impl StateSpace for Hilbert {
     }
 }
 
-/// Adapter that turns a model plus state space into a sampler-facing density.
+/// Private adapter used by `VariationalState::sample()` to expose a model as
+/// a sampler-facing density.
 #[derive(Clone, Copy, Debug)]
 struct StateLogDensity<'a, M, SS> {
     model: &'a M,
@@ -58,8 +59,8 @@ impl<'a, M, SS> StateLogDensity<'a, M, SS> {
 
 /// User-facing orchestration object.
 ///
-/// A variational state owns the model, sampler, chain state, and collected
-/// samples. It is the natural checkpoint boundary.
+/// A variational state owns the model, space, state space, sampler, chain
+/// state, and collected samples. It is the natural checkpoint boundary.
 pub struct VariationalState<M, S: Space, B, K, P, SS = Simplex>
 where
     B: Backend,
@@ -147,6 +148,7 @@ where
         let n_chains = self.sampler_state.chains.dims()[0];
         let device = self.sampler_state.chains.device();
         let sampler = &self.sampler;
+        // Build the private bridge from the model and state space.
         let log_density = StateLogDensity::new(&self.model, &self.state_space);
 
         for sample_idx in 0..self.n_samples_per_chain {

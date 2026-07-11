@@ -17,13 +17,14 @@
 //! - `Proposal`, `LogDensity`, `LocalProposal`, `Metropolis`, and
 //!   `SamplerState` for Burn-native sampling
 //!
-//! The crate keeps spaces as the domain of the models. Flat storage is
-//! canonical, while structure is recovered only through borrowed views when a
-//! concrete space provides one. Homogeneous product spaces may also seed
-//! batched chain states through `random_state()`. Burn owns backend selection,
-//! tensor parallelism, and device execution. Variational states expose a
-//! `sample()` method and a `samples` buffer, mirroring the NetKet user
-//! interface.
+//! The crate keeps spaces as the domain of the models. Models expose
+//! `log_value`; variational states combine that with their `StateSpace` to
+//! produce the sampler-facing `LogDensity`. Flat storage is canonical, while
+//! structure is recovered only through borrowed views when a concrete space
+//! provides one. Homogeneous product spaces may also seed batched chain
+//! states through `random_state()`. Burn owns backend selection, tensor
+//! parallelism, and device execution. Variational states expose a `sample()`
+//! method and a `samples` buffer, mirroring the NetKet user interface.
 
 pub mod model;
 pub mod observable;
