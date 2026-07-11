@@ -74,6 +74,7 @@ where
 mod tests {
     use super::*;
     use burn::backend::NdArray;
+
     #[test]
     fn rbm_produces_log_value() {
         let device = Default::default();

@@ -26,12 +26,11 @@ mod tests {
     use super::*;
     use crate::test_utils::ZeroModel;
     use burn::backend::NdArray;
-    use burn::tensor::Tensor;
 
     #[test]
     fn model_provides_log_value() {
         let device = Default::default();
-        let samples: FloatTensor<NdArray, 2> = Tensor::from_data([[0.0f32]], &device);
+        let samples = FloatTensor::<NdArray, 2>::from_data([[0.0f32]], &device);
         let model = ZeroModel;
 
         let density = model.log_value(samples);

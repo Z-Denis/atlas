@@ -169,7 +169,6 @@ where
 
     pub fn sample(&mut self)
     where
-        S: Space,
         S::DType: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
@@ -198,19 +197,13 @@ where
     }
 
     /// Evaluate the model on the collected samples buffer.
-    pub fn log_value(&self) -> FloatTensor<B, 1>
-    where
-        M: Model<B>,
-    {
+    pub fn log_value(&self) -> FloatTensor<B, 1> {
         let samples = into_model_tensor(self.samples.clone(), self.model.param_dtype());
         self.model.log_value(samples)
     }
 
     /// Evaluate the model on arbitrary configurations.
-    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1>
-    where
-        M: Model<B>,
-    {
+    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
         let samples = into_model_tensor(samples, self.model.param_dtype());
         self.model.log_value(samples)
     }

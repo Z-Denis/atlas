@@ -147,17 +147,17 @@ impl<L: HomogeneousProductSpace> HomogeneousProductSpace for HomogeneousSpace<L>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FloatTensor;
     use crate::space::{ContinuousSpace, Spin};
     use burn::backend::Flex;
-    use burn::tensor::Tensor;
 
     #[test]
     fn continuous_product_space_checks_domain() {
         let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let space = HomogeneousSpace::new(local, 2);
         let device = Default::default();
-        let valid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 0.0, 1.0, -1.0]]], &device);
-        let invalid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0, 1.0, -1.0]]], &device);
+        let valid = FloatTensor::<Flex, 3>::from_data([[[0.0, 0.0, 1.0, -1.0]]], &device);
+        let invalid = FloatTensor::<Flex, 3>::from_data([[[0.0, 2.0, 1.0, -1.0]]], &device);
         assert!(space.contains(valid).all().into_scalar());
         assert!(!space.contains(invalid).all().into_scalar());
     }
@@ -190,7 +190,7 @@ mod tests {
         let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let space = HomogeneousSpace::new(local, 3);
         let device = Default::default();
-        let state: Tensor<Flex, 2> = space.random_state(4, &device);
+        let state = space.random_state::<Flex>(4, &device);
         assert_eq!(state.dims(), [4, 6]);
     }
 }

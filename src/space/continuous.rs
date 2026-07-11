@@ -145,15 +145,15 @@ pub type ParticleSpace<T> = HomogeneousSpace<ContinuousSpace<T>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FloatTensor;
     use burn::backend::Flex;
-    use burn::tensor::Tensor;
 
     #[test]
     fn bounded_contains() {
         let space = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let device = Default::default();
-        let valid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 0.0]], [[1.0, -1.0]]], &device);
-        let invalid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
+        let valid = FloatTensor::<Flex, 3>::from_data([[[0.0, 0.0]], [[1.0, -1.0]]], &device);
+        let invalid = FloatTensor::<Flex, 3>::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
         assert!(space.contains(valid).all().into_scalar());
         assert!(!space.contains(invalid).all().into_scalar());
     }
@@ -162,7 +162,7 @@ mod tests {
     fn unbounded_contains() {
         let space = ContinuousSpace::new(f32::NEG_INFINITY, f32::INFINITY, 2);
         let device = Default::default();
-        let sample: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
+        let sample = FloatTensor::<Flex, 3>::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
         assert!(space.contains(sample).all().into_scalar());
     }
 
@@ -170,7 +170,7 @@ mod tests {
     fn random_state_has_shape() {
         let space = ContinuousSpace::new(-1.0f32, 1.0, 3);
         let device = Default::default();
-        let state: Tensor<Flex, 2> = space.random_state(4, &device);
+        let state = space.random_state::<Flex>(4, &device);
         assert_eq!(state.dims(), [4, 3]);
     }
 

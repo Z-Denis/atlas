@@ -120,8 +120,8 @@ pub type SpinSpace = HomogeneousSpace<Spin>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::IntTensor;
     use burn::backend::Flex;
-    use burn::tensor::{Int, Tensor};
 
     #[test]
     fn spin_constructors_work() {
@@ -134,7 +134,7 @@ mod tests {
         let local = Spin::integer(1);
         let space = HomogeneousSpace::new(local, 3);
         let device = Default::default();
-        let sample: Tensor<Flex, 2, Int> = Tensor::from_data([[-2i32, 0, 2]], &device);
+        let sample = IntTensor::<Flex, 2>::from_data([[-2i32, 0, 2]], &device);
         assert_eq!(space.sample_size(), 3);
         assert!(space.contains(sample.clone()).into_scalar());
         assert_eq!(space.view(&[-2i32, 0, 2]).particle(1), &[0]);

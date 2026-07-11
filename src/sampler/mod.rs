@@ -233,13 +233,12 @@ mod tests {
     use crate::{Simplex, VariationalState};
     use burn::backend::Flex;
     use burn::tensor::Float;
-    use burn::tensor::Tensor;
     use burn::tensor::backend::BackendTypes;
 
     #[test]
     fn sampler_state_tracks_chain_state() {
         let device: <Flex as BackendTypes>::Device = Default::default();
-        let samples: Samples<Flex, 2, Int> = Tensor::from_data([[0], [1]], &device);
+        let samples = IntTensor::<Flex, 2>::from_data([[0], [1]], &device);
         let state = SamplerState::new(samples);
         assert_eq!(state.chains.dims(), [2, 1]);
         assert_eq!(state.accepted.dims(), [2]);
@@ -350,7 +349,7 @@ mod tests {
 
         let continuous = ContinuousSpace::new(-1.0f32, 1.0, 2);
         assert_eq!(continuous.sample_size(), 2);
-        let continuous_sample: FloatTensor<Flex, 2> = Tensor::from_data([[0.0f32, 1.0]], &device);
+        let continuous_sample = FloatTensor::<Flex, 2>::from_data([[0.0f32, 1.0]], &device);
         assert!(continuous.contains(continuous_sample).all().into_scalar());
         assert_eq!(continuous.view(&[0.0f32, 1.0]).particle(0), &[0.0, 1.0]);
         assert_eq!(continuous.random_state::<Flex>(4, &device).dims(), [4, 2]);
@@ -371,7 +370,7 @@ mod tests {
 
         let spin = Spin::half_integer(1);
         assert_eq!(spin.sample_size(), 1);
-        let spin_sample: IntTensor<Flex, 2> = Tensor::from_data([[1i32]], &device);
+        let spin_sample = IntTensor::<Flex, 2>::from_data([[1i32]], &device);
         assert!(spin.contains(spin_sample).all().into_scalar());
         assert_eq!(spin.view(&[1i32]), &[1]);
         assert_eq!(spin.random_state::<Flex>(4, &device).dims(), [4, 1]);
@@ -400,7 +399,7 @@ mod tests {
             _space: &HomogeneousSpace<Spin>,
             samples: IntTensor<Flex, 2>,
         ) -> IntTensor<Flex, 2> {
-            Tensor::from_data([[0i32]], &samples.device())
+            IntTensor::<Flex, 2>::from_data([[0i32]], &samples.device())
         }
     }
 
