@@ -44,24 +44,6 @@ pub trait ViewSpace: Space {
     fn view<'a>(&self, sample: &'a [Self::Scalar]) -> Self::View<'a>;
 }
 
-/// Trait for Burn-backed objects that provide a real-valued log density over a
-/// configuration space.
-///
-/// The input tensor stores flat samples on the last axis and may carry any
-/// number of leading batch axes. The returned tensor keeps the same leading
-/// axes and is real-valued on the backend.
-pub trait LogDensity<S: Space> {
-    fn log_density<B, const D: usize, K>(
-        &self,
-        space: &S,
-        samples: Tensor<B, D, K>,
-    ) -> Tensor<B, D>
-    where
-        B: Backend,
-        K: BasicOps<B>,
-        K::Elem: Element;
-}
-
 /// Canonical contiguous storage for samples.
 ///
 /// The last axis is always a complete sample of length `sample_size`. Leading
