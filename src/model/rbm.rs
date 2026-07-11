@@ -1,5 +1,8 @@
 use burn::module::{Module, Param};
-use burn::tensor::{FloatDType, Numeric, Tensor, activation::softplus, backend::Backend};
+use burn::tensor::{
+    Float, FloatDType, Numeric, Tensor, TensorCreationOptions, activation::softplus,
+    backend::Backend,
+};
 
 use super::{IntoFloatTensor, Model};
 use crate::space::Space;
@@ -19,13 +22,20 @@ pub struct Rbm<B: Backend> {
 }
 
 impl<B: Backend> Rbm<B> {
-    pub fn new(visible_size: usize, hidden_size: usize, device: &B::Device) -> Self {
-        let visible_bias = Tensor::zeros([visible_size], device);
-        let hidden_bias = Tensor::zeros([hidden_size], device);
+    pub fn new(
+        visible_size: usize,
+        hidden_size: usize,
+        param_dtype: Option<FloatDType>,
+        device: &B::Device,
+    ) -> Self {
+        let param_dtype = param_dtype.unwrap_or(FloatDType::F32);
+        let opts = TensorCreationOptions::<B>::new(device.clone()).with_dtype(param_dtype.into());
+        let visible_bias = Tensor::zeros([visible_size], opts.clone());
+        let hidden_bias = Tensor::zeros([hidden_size], opts.clone());
         let weight = Tensor::random(
             [visible_size, hidden_size],
             burn::tensor::Distribution::Default,
-            device,
+            opts,
         );
 
         Self {
@@ -43,9 +53,11 @@ where
     S: Space,
     B: Backend,
 {
-    fn log_value<K>(&self, space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
+    type ParamDType = Float;
+
+    fn log_value(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
     where
-        K: Numeric<B> + IntoFloatTensor<B, 2>,
+        S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
     {
         assert_eq!(space.sample_size(), self.visible_size);
         assert_eq!(
@@ -53,7 +65,7 @@ where
             [self.visible_size, self.hidden_size]
         );
         let dtype: FloatDType = self.weight.val().dtype().into();
-        let flat = <K as IntoFloatTensor<B, 2>>::into_float(samples, dtype);
+        let flat = <S::DType as IntoFloatTensor<B, 2>>::into_float(samples, dtype);
         let visible_bias = self.visible_bias.val().unsqueeze_dim(1);
         let hidden_bias = self.hidden_bias.val().unsqueeze_dim(0);
 
@@ -75,7 +87,7 @@ mod tests {
     fn rbm_produces_log_value() {
         let device = Default::default();
         let space = ContinuousSpace::new(-1.0f32, 1.0, 4);
-        let rbm = Rbm::<NdArray>::new(4, 3, &device);
+        let rbm = Rbm::<NdArray>::new(4, 3, None, &device);
         let samples = Tensor::<NdArray, 2, Float>::from_data([[0.0, 1.0, 0.0, 1.0]], &device);
 
         let density = rbm.log_value(&space, samples);

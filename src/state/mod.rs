@@ -61,38 +61,38 @@ impl<'a, M, SS> StateLogDensity<'a, M, SS> {
 ///
 /// A variational state owns the model, space, state space, sampler, chain
 /// state, and collected samples. It is the natural checkpoint boundary.
-pub struct VariationalState<M, S: Space, B, K, P, SS = Simplex>
+pub struct VariationalState<M, S: Space, B, P, SS = Simplex>
 where
     B: Backend,
-    K: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
+    S::DType: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
 {
     pub model: M,
     pub space: S,
     pub state_space: SS,
     pub sampler: Metropolis<P>,
-    pub sampler_state: SamplerState<B, K>,
-    pub samples: Samples<B, 2, K>,
+    pub sampler_state: SamplerState<B, S::DType>,
+    pub samples: Samples<B, 2, S::DType>,
     n_samples_per_chain: usize,
 }
 
-impl<M, S: Space, B, K, P, SS> VariationalState<M, S, B, K, P, SS>
+impl<M, S: Space, B, P, SS> VariationalState<M, S, B, P, SS>
 where
     B: Backend,
-    K: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
+    S::DType: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
 {
     pub fn new(
         model: M,
         space: S,
         state_space: SS,
         sampler: Metropolis<P>,
-        sampler_state: SamplerState<B, K>,
+        sampler_state: SamplerState<B, S::DType>,
         n_samples_per_chain: usize,
     ) -> Self {
         assert!(n_samples_per_chain > 0);
 
         let dims = sampler_state.chains.dims();
         let device = sampler_state.chains.device();
-        let samples = Tensor::<B, 2, K>::zeros(
+        let samples = Tensor::<B, 2, S::DType>::zeros(
             [dims[0] * n_samples_per_chain, dims[1]],
             TensorCreationOptions::<B>::new(device),
         );
@@ -119,11 +119,11 @@ where
     ) -> Self
     where
         S: RandomState,
-        K: burn::tensor::Numeric<B, Elem = S::Scalar>,
+        S::DType: burn::tensor::Numeric<B, Elem = S::Scalar>,
         S::Scalar: Clone + Element,
     {
         let device = Default::default();
-        let sampler_state = SamplerState::from_space(&space, n_chains, &device);
+        let sampler_state = SamplerState::<B, S::DType>::from_space(&space, n_chains, &device);
         Self::new(
             model,
             space,
@@ -138,9 +138,9 @@ where
     where
         S: Space,
         B: Backend,
-        K: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
+        S::DType: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
         S::Scalar: Clone + Element,
-        P: Proposal<B, S, K>,
+        P: Proposal<B, S>,
         M: Model<S, B>,
         SS: StateSpace,
     {
@@ -174,7 +174,7 @@ where
     }
 
     /// Evaluate the model on arbitrary configurations.
-    pub fn log_value_on(&self, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
+    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
     where
         M: Model<S, B>,
     {
@@ -182,15 +182,15 @@ where
     }
 }
 
-impl<'a, M, S, B, K, SS> LogDensity<B, S, K> for StateLogDensity<'a, M, SS>
+impl<'a, M, S, B, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
 where
     S: Space,
     B: Backend,
-    K: Numeric<B> + IntoFloatTensor<B, 2>,
+    S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
     M: Model<S, B>,
     SS: StateSpace,
 {
-    fn log_density(&self, space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1> {
+    fn log_density(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
         self.state_space
             .log_density(self.model.log_value(space, samples))
     }
@@ -210,7 +210,7 @@ mod tests {
     fn log_value_uses_collected_samples() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
-        let state: VariationalState<_, _, Flex, Int, _, Simplex> =
+        let state: VariationalState<_, _, Flex, _, Simplex> =
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
 
         let values = state.log_value();
@@ -222,7 +222,7 @@ mod tests {
     fn log_value_on_uses_arbitrary_samples() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
-        let state: VariationalState<_, _, Flex, Int, _, Simplex> =
+        let state: VariationalState<_, _, Flex, _, Simplex> =
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
         let samples = Tensor::<Flex, 2, Int>::from_data([[1], [0]], &Default::default());
 

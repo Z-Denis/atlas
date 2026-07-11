@@ -1,6 +1,6 @@
 use burn::tensor::{BasicOps, Bool, Numeric, Tensor, backend::Backend};
 use burn_backend::Element;
-use burn_backend::tensor::Ordered;
+use burn_backend::tensor::{Ordered, TensorKind};
 
 /// Minimal description of a configuration domain.
 ///
@@ -9,13 +9,15 @@ use burn_backend::tensor::Ordered;
 /// always the flat configuration axis; leading axes are batch axes.
 pub trait Space {
     type Scalar;
+    type DType;
 
     fn sample_size(&self) -> usize;
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::DType: TensorKind<B>,
+        Self::DType: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
         Self::Scalar: Clone + Element;
 }
 
@@ -24,10 +26,11 @@ pub trait LocalSpace: Space {}
 
 /// Extension trait for spaces that can generate initial states.
 pub trait RandomState: Space {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: Numeric<B, Elem = Self::Scalar>,
+        Self::DType: TensorKind<B>,
+        Self::DType: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element;
 }
 

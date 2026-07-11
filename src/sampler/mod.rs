@@ -1,14 +1,13 @@
 use burn::tensor::{
-    BasicOps, Bool, Distribution, IndexingUpdateOp, Int, Numeric, Tensor, backend::Backend,
+    BasicOps, Bool, Distribution, IndexingUpdateOp, Int, Tensor, backend::Backend,
 };
 use burn_backend::Element;
-use burn_backend::tensor::Ordered;
+use burn_backend::tensor::{Ordered, TensorKind};
 use num_traits::ToPrimitive;
 
 use crate::space::{HomogeneousProductSpace, RandomState, Samples, Space};
 use crate::utils::{chain_indices, float_opts, int_opts, randint};
 
-type SampleTensor<B, K> = Tensor<B, 2, K>;
 type ChainStats<B> = Tensor<B, 1, Int>;
 type LogProb<B> = Tensor<B, 1>;
 
@@ -38,13 +37,14 @@ fn skip_index<B: Backend>(
     )
 }
 
-fn reject_outside_domain<B: Backend, S, K>(
+fn reject_outside_domain<B: Backend, S>(
     space: &S,
-    samples: &Tensor<B, 2, K>,
+    samples: &Tensor<B, 2, S::DType>,
 ) -> Tensor<B, 1, Bool>
 where
     S: Space,
-    K: BasicOps<B, Elem = S::Scalar> + Ordered<B>,
+    S::DType: TensorKind<B>,
+    S::DType: BasicOps<B, Elem = S::Scalar> + Ordered<B>,
     S::Scalar: Clone + Element,
 {
     let valid = space.contains(samples.clone());
@@ -52,33 +52,34 @@ where
     valid.reshape([n_chains])
 }
 
-pub trait Proposal<B: Backend, S, K>
+pub trait Proposal<B: Backend, S: Space>
 where
-    K: BasicOps<B>,
+    S::DType: TensorKind<B>,
 {
     /// Propose one updated configuration per chain.
-    fn propose(&self, space: &S, samples: SampleTensor<B, K>) -> SampleTensor<B, K>;
+    fn propose(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 2, S::DType>;
 }
 
-pub trait LogDensity<B: Backend, S, K>
+pub trait LogDensity<B: Backend, S: Space>
 where
-    K: Numeric<B>,
+    S::DType: TensorKind<B>,
 {
     /// Evaluate the log density for each chain.
-    fn log_density(&self, space: &S, samples: SampleTensor<B, K>) -> LogProb<B>;
+    fn log_density(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> LogProb<B>;
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LocalProposal;
 
-impl<S, B, K> Proposal<B, S, K> for LocalProposal
+impl<S, B> Proposal<B, S> for LocalProposal
 where
     S: HomogeneousProductSpace,
     S::Scalar: Clone + PartialEq + Element,
     B: Backend,
-    K: BasicOps<B, Elem = S::Scalar>,
+    S::DType: TensorKind<B>,
+    S::DType: BasicOps<B, Elem = S::Scalar>,
 {
-    fn propose(&self, space: &S, samples: SampleTensor<B, K>) -> SampleTensor<B, K> {
+    fn propose(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 2, S::DType> {
         let sample_size = space.sample_size();
         let local_size = space.local_size();
         if sample_size == 0 || local_size <= 1 {
@@ -115,17 +116,16 @@ impl<T> GaussianProposal<T> {
     }
 }
 
-impl<S, B, K, T> Proposal<B, S, K> for GaussianProposal<T>
+impl<S, B, T> Proposal<B, S> for GaussianProposal<T>
 where
-    S: Space<Scalar = T>,
+    S: Space<Scalar = T, DType = burn::tensor::Float>,
     B: Backend,
-    K: Numeric<B, Elem = T>,
     T: Element + ToPrimitive + num_traits::Float,
 {
-    fn propose(&self, space: &S, samples: SampleTensor<B, K>) -> SampleTensor<B, K> {
+    fn propose(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 2, S::DType> {
         let device = samples.device();
         let n_chains = samples.dims()[0];
-        let noise = Tensor::<B, 2, K>::random(
+        let noise = Tensor::<B, 2, S::DType>::random(
             [n_chains, space.sample_size()],
             Distribution::Normal(0.0, num_traits::ToPrimitive::to_f64(&self.sigma).unwrap()),
             float_opts::<B>(&device),
@@ -161,13 +161,14 @@ where
     }
 
     /// Seed the sampler state from a space-specific random chain state.
-    pub fn from_space<S>(space: &S, n_chains: usize, device: &B::Device) -> Self
+    pub fn from_space<S>(space: &S, n_chains: usize, device: &B::Device) -> SamplerState<B, S::DType>
     where
         S: RandomState,
-        K: burn::tensor::Numeric<B, Elem = S::Scalar>,
+        S::DType: TensorKind<B>,
+        S::DType: burn::tensor::Numeric<B, Elem = S::Scalar>,
         S::Scalar: Clone + Element,
     {
-        Self::new(space.random_state::<B, K>(n_chains, device))
+        SamplerState::new(space.random_state::<B>(n_chains, device))
     }
 }
 
@@ -183,14 +184,15 @@ impl<P> Metropolis<P> {
 }
 
 impl<P> Metropolis<P> {
-    pub fn step<S, F, B, K>(&self, space: &S, log_density: &F, state: &mut SamplerState<B, K>)
+    pub fn step<S, F, B>(&self, space: &S, log_density: &F, state: &mut SamplerState<B, S::DType>)
     where
         S: Space,
         B: Backend,
-        K: BasicOps<B, Elem = S::Scalar> + Ordered<B>,
+        S::DType: TensorKind<B>,
+        S::DType: BasicOps<B, Elem = S::Scalar> + Ordered<B>,
         S::Scalar: Clone + Element,
-        P: Proposal<B, S, K>,
-        F: LogDensity<B, S, K>,
+        P: Proposal<B, S>,
+        F: LogDensity<B, S>,
     {
         let device = state.chains.device();
         let n_chains = state.chains.dims()[0];
@@ -247,7 +249,8 @@ mod tests {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
         let device: <Flex as BackendTypes>::Device = Default::default();
-        let mut state: SamplerState<Flex, Int> = SamplerState::from_space(&space, 1, &device);
+        let mut state: SamplerState<Flex, Int> =
+            SamplerState::<Flex, Int>::from_space(&space, 1, &device);
         let before = ints(state.chains.clone());
         sampler.clone().step(&space, &ZeroLogDensity, &mut state);
 
@@ -262,7 +265,7 @@ mod tests {
     fn variational_state_collects_batches() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
-        let mut state: VariationalState<_, _, Flex, Int, _, Simplex> =
+        let mut state: VariationalState<_, _, Flex, _, Simplex> =
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
 
         state.sample();
@@ -278,7 +281,7 @@ mod tests {
         let n_samples_per_chain = 4;
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
-        let mut state: VariationalState<_, _, Flex, Int, _, Simplex> = VariationalState::from_space(
+        let mut state: VariationalState<_, _, Flex, _, Simplex> = VariationalState::from_space(
             ZeroModel,
             space,
             Simplex,
@@ -348,13 +351,13 @@ mod tests {
         let continuous_sample: Tensor<Flex, 2, Float> = Tensor::from_data([[0.0f32, 1.0]], &device);
         assert!(continuous.contains(continuous_sample).all().into_scalar());
         assert_eq!(continuous.view(&[0.0f32, 1.0]).particle(0), &[0.0, 1.0]);
-        assert_eq!(
-            continuous.random_state::<Flex, Float>(4, &device).dims(),
-            [4, 2]
-        );
+        assert_eq!(continuous.random_state::<Flex>(4, &device).dims(), [4, 2]);
 
-        let mut continuous_state: SamplerState<Flex, Float> =
-            SamplerState::from_space(&HomogeneousSpace::new(continuous, 1), 2, &device);
+        let mut continuous_state: SamplerState<Flex, Float> = SamplerState::<Flex, Float>::from_space(
+            &HomogeneousSpace::new(continuous, 1),
+            2,
+            &device,
+        );
         let continuous_sampler = Metropolis::new(GaussianProposal::new(0.1f32));
         continuous_sampler.clone().step(
             &HomogeneousSpace::new(ContinuousSpace::new(-1.0f32, 1.0, 2), 1),
@@ -368,10 +371,13 @@ mod tests {
         let spin_sample: Tensor<Flex, 2, Int> = Tensor::from_data([[1i32]], &device);
         assert!(spin.contains(spin_sample).all().into_scalar());
         assert_eq!(spin.view(&[1i32]), &[1]);
-        assert_eq!(spin.random_state::<Flex, Int>(4, &device).dims(), [4, 1]);
+        assert_eq!(spin.random_state::<Flex>(4, &device).dims(), [4, 1]);
 
-        let mut spin_state: SamplerState<Flex, Int> =
-            SamplerState::from_space(&HomogeneousSpace::new(Spin::half_integer(1), 1), 2, &device);
+        let mut spin_state: SamplerState<Flex, Int> = SamplerState::<Flex, Int>::from_space(
+            &HomogeneousSpace::new(Spin::half_integer(1), 1),
+            2,
+            &device,
+        );
         let spin_sampler = Metropolis::new(LocalProposal);
         spin_sampler.clone().step(
             &HomogeneousSpace::new(Spin::half_integer(1), 1),
@@ -384,7 +390,7 @@ mod tests {
     #[derive(Clone, Copy, Debug)]
     struct BadProposal;
 
-    impl Proposal<Flex, HomogeneousSpace<Spin>, Int> for BadProposal {
+    impl Proposal<Flex, HomogeneousSpace<Spin>> for BadProposal {
         fn propose(
             &self,
             _space: &HomogeneousSpace<Spin>,
@@ -399,7 +405,8 @@ mod tests {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(BadProposal);
         let device: <Flex as BackendTypes>::Device = Default::default();
-        let mut state: SamplerState<Flex, Int> = SamplerState::from_space(&space, 1, &device);
+        let mut state: SamplerState<Flex, Int> =
+            SamplerState::<Flex, Int>::from_space(&space, 1, &device);
         let before = state.chains.clone();
         sampler.clone().step(&space, &ZeroLogDensity, &mut state);
 

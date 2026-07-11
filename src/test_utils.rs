@@ -1,7 +1,8 @@
 use crate::model::Model;
 use crate::sampler::LogDensity;
 use crate::space::Space;
-use burn::tensor::{Numeric, Tensor, TensorCreationOptions, backend::Backend};
+use burn::tensor::{BasicOps, Tensor, TensorCreationOptions, backend::Backend};
+use burn_backend::tensor::TensorKind;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ZeroModel;
@@ -10,11 +11,11 @@ impl<S, B> Model<S, B> for ZeroModel
 where
     S: Space,
     B: Backend,
+    S::DType: TensorKind<B> + BasicOps<B>,
 {
-    fn log_value<K>(&self, _space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
-    where
-        K: Numeric<B> + crate::model::IntoFloatTensor<B, 2>,
-    {
+    type ParamDType = burn::tensor::Float;
+
+    fn log_value(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
         Tensor::<B, 1>::zeros(
             [samples.dims()[0]],
             TensorCreationOptions::<B>::new(samples.device()),
@@ -32,13 +33,13 @@ where
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ZeroLogDensity;
 
-impl<S, B, K> LogDensity<B, S, K> for ZeroLogDensity
+impl<S, B> LogDensity<B, S> for ZeroLogDensity
 where
     S: Space,
     B: Backend,
-    K: Numeric<B>,
+    S::DType: TensorKind<B> + BasicOps<B>,
 {
-    fn log_density(&self, _space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1> {
+    fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
         Tensor::<B, 1>::zeros(
             [samples.dims()[0]],
             TensorCreationOptions::<B>::new(samples.device()),

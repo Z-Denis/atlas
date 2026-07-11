@@ -58,15 +58,16 @@ impl<T: Float> ContinuousSpace<T> {
 
 impl<T: Float> Space for ContinuousSpace<T> {
     type Scalar = T;
+    type DType = burn::tensor::Float;
 
     fn sample_size(&self) -> usize {
         self.dim
     }
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = T> + Ordered<B>,
+        Self::DType: BasicOps<B, Elem = T> + Ordered<B>,
         T: Clone + Element,
     {
         let device = samples.device();
@@ -114,14 +115,14 @@ impl<T: Float + 'static> ViewSpace for ContinuousSpace<T> {
 impl<T: Float> LocalSpace for ContinuousSpace<T> {}
 
 impl<T: Float> RandomState for ContinuousSpace<T> {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: Numeric<B, Elem = Self::Scalar>,
+        Self::DType: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         if self.lower.is_finite() && self.upper.is_finite() {
-            Tensor::<B, 2, K>::random(
+            Tensor::<B, 2, Self::DType>::random(
                 [n_chains, self.sample_size()],
                 Distribution::Uniform(
                     ToPrimitive::to_f64(&self.lower).unwrap(),
@@ -130,7 +131,7 @@ impl<T: Float> RandomState for ContinuousSpace<T> {
                 float_opts::<B>(device),
             )
         } else {
-            Tensor::<B, 2, K>::random(
+            Tensor::<B, 2, Self::DType>::random(
                 [n_chains, self.sample_size()],
                 Distribution::Normal(0.0, 1.0),
                 float_opts::<B>(device),

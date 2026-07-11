@@ -13,16 +13,17 @@ pub trait HomogeneousProductSpace: LocalSpace {
         self.local_states().len()
     }
 
-    fn indices_of<B, K>(&self, values: Tensor<B, 1, K>) -> Tensor<B, 1, Int>
+    fn indices_of<B>(&self, values: Tensor<B, 1, Self::DType>) -> Tensor<B, 1, Int>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::DType: burn_backend::tensor::TensorKind<B>,
+        Self::DType: BasicOps<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         let device = values.device();
         let local_size = self.local_size();
         let n_values = values.dims()[0];
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device);
+        let states = Tensor::<B, 1, Self::DType>::from_data(self.local_states(), &device);
 
         values
             .clone()
@@ -34,14 +35,14 @@ pub trait HomogeneousProductSpace: LocalSpace {
             .squeeze_dim::<1>(1)
     }
 
-    fn states_at<B, K>(&self, indices: Tensor<B, 1, Int>) -> Tensor<B, 1, K>
+    fn states_at<B>(&self, indices: Tensor<B, 1, Int>) -> Tensor<B, 1, Self::DType>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::DType: burn_backend::tensor::TensorKind<B> + BasicOps<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         let device = indices.device();
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device);
+        let states = Tensor::<B, 1, Self::DType>::from_data(self.local_states(), &device);
         states.select(0, indices)
     }
 }
@@ -71,15 +72,16 @@ impl<L> HomogeneousSpace<L> {
 
 impl<L: Space> Space for HomogeneousSpace<L> {
     type Scalar = L::Scalar;
+    type DType = L::DType;
 
     fn sample_size(&self) -> usize {
         self.local.sample_size() * self.n
     }
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::DType: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
         Self::Scalar: Clone + Element,
     {
         let device = samples.device();
@@ -124,14 +126,14 @@ impl<L: Space + 'static> ViewSpace for HomogeneousSpace<L> {
 impl<L: LocalSpace> LocalSpace for HomogeneousSpace<L> {}
 
 impl<L: Space + RandomState> RandomState for HomogeneousSpace<L> {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: Numeric<B, Elem = Self::Scalar>,
+        Self::DType: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         self.local
-            .random_state::<B, K>(n_chains * self.n, device)
+            .random_state::<B>(n_chains * self.n, device)
             .reshape([n_chains, self.sample_size()])
     }
 }

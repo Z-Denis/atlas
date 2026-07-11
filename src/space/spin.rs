@@ -1,4 +1,4 @@
-use burn::tensor::{BasicOps, Bool, Tensor, backend::Backend};
+use burn::tensor::{BasicOps, Bool, Numeric, Tensor, backend::Backend};
 use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
@@ -47,15 +47,16 @@ impl Spin {
 
 impl Space for Spin {
     type Scalar = i32;
+    type DType = burn::tensor::Int;
 
     fn sample_size(&self) -> usize {
         1
     }
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::DType: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
         Self::Scalar: Clone + Element,
     {
         let device = samples.device();
@@ -70,7 +71,7 @@ impl Space for Spin {
 
         let flat_size = dims[..D - 1].iter().product::<usize>();
         let flat = samples.reshape([flat_size, sample_size]);
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device)
+        let states = Tensor::<B, 1, Self::DType>::from_data(self.local_states(), &device)
             .unsqueeze_dim::<2>(0)
             .expand([flat_size, self.local_size()]);
 
@@ -97,13 +98,13 @@ impl ViewSpace for Spin {
 impl LocalSpace for Spin {}
 
 impl RandomState for Spin {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::DType: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), device);
+        let states = Tensor::<B, 1, Self::DType>::from_data(self.local_states(), device);
         let indices = randint::<B, 2>([n_chains, 1], 0, self.local_size() as i64, device);
         states.take::<2, 2>(0, indices)
     }

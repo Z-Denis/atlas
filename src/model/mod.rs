@@ -26,9 +26,12 @@ impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for Int {
 /// A model is defined on a configuration space and returns a backend-native
 /// logarithmic value for each configuration batch.
 pub trait Model<S: Space, B: Backend> {
-    fn log_value<K>(&self, space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
+    type ParamDType;
+
+    fn log_value(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
     where
-        K: Numeric<B> + IntoFloatTensor<B, 2>;
+        S::DType: TensorKind<B>,
+        S::DType: Numeric<B> + IntoFloatTensor<B, 2>;
 }
 
 pub use rbm::Rbm;
