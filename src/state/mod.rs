@@ -94,9 +94,9 @@ impl<'a, M, SS> StateLogDensity<'a, M, SS> {
 ///
 /// A variational state owns the model, space, state space, sampler, chain
 /// state, and collected samples. It is the natural checkpoint boundary.
-pub struct VariationalState<M, S: Space, B, P, SS = Simplex>
+pub struct VariationalState<M, S: Space, B: Backend, P, SS = Simplex>
 where
-    B: Backend,
+    M: Model<B>,
     S::DType: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
 {
     pub model: M,
@@ -108,9 +108,9 @@ where
     n_samples_per_chain: usize,
 }
 
-impl<M, S: Space, B, P, SS> VariationalState<M, S, B, P, SS>
+impl<M, S: Space, B: Backend, P, SS> VariationalState<M, S, B, P, SS>
 where
-    B: Backend,
+    M: Model<B>,
     S::DType: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
 {
     pub fn new(
@@ -170,11 +170,9 @@ where
     pub fn sample(&mut self)
     where
         S: Space,
-        B: Backend,
         S::DType: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
-        M: Model<B>,
         SS: StateSpace,
     {
         let sweep_size = self.space.sample_size();
@@ -218,12 +216,10 @@ where
     }
 }
 
-impl<'a, M, S, B, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
+impl<'a, M: Model<B>, S, B: Backend, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
 where
     S: Space,
-    B: Backend,
     S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
-    M: Model<B>,
     SS: StateSpace,
 {
     fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
