@@ -12,7 +12,7 @@
 //! - `LogDensity` for sampler-facing Burn tensor evaluation
 //! - `Spin` and `SpinSpace` for homogeneous spin domains
 //! - `ContinuousSpace` and `ParticleSpace` for homogeneous particle domains
-//! - `random_state()` on homogeneous product spaces for chain initialization
+//! - `random_state()` on spaces that can seed chain initialization
 //! - `sample()` and `samples` on `VariationalState` for NetKet-like sampling
 //! - `Proposal`, `LogDensity`, `LocalProposal`, `Metropolis`, and
 //!   `SamplerState` for Burn-native sampling

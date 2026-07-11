@@ -10,6 +10,26 @@ use crate::utils::{chain_indices, float_opts, int_opts, randint};
 type ChainStats<B> = IntTensor<B, 1>;
 type LogProb<B> = FloatTensor<B, 1>;
 
+#[doc(hidden)]
+pub trait ProposalDType<B: Backend>: TensorKind<B> + BasicOps<B> {}
+
+impl<B, T> ProposalDType<B> for T
+where
+    B: Backend,
+    T: TensorKind<B> + BasicOps<B>,
+{
+}
+
+#[doc(hidden)]
+pub trait StepDType<B: Backend>: ProposalDType<B> + Ordered<B> {}
+
+impl<B, T> StepDType<B> for T
+where
+    B: Backend,
+    T: ProposalDType<B> + Ordered<B>,
+{
+}
+
 fn chain_update_indices<B: Backend>(
     n_chains: usize,
     local_indices: IntTensor<B, 1>,
@@ -39,8 +59,7 @@ fn reject_outside_domain<B: Backend, S>(
 ) -> Tensor<B, 1, Bool>
 where
     S: Space,
-    S::DType: TensorKind<B>,
-    S::DType: BasicOps<B, Elem = S::Scalar> + Ordered<B>,
+    S::DType: StepDType<B> + BasicOps<B, Elem = S::Scalar>,
     S::Scalar: Clone + Element,
 {
     let valid = space.contains(samples.clone());
@@ -50,7 +69,7 @@ where
 
 pub trait Proposal<B: Backend, S: Space>
 where
-    S::DType: TensorKind<B>,
+    S::DType: ProposalDType<B>,
 {
     /// Propose one updated configuration per chain.
     fn propose(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 2, S::DType>;
@@ -58,7 +77,7 @@ where
 
 pub trait LogDensity<B: Backend, S: Space>
 where
-    S::DType: TensorKind<B>,
+    S::DType: ProposalDType<B>,
 {
     /// Evaluate the log density for each chain.
     fn log_density(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> LogProb<B>;
@@ -72,8 +91,7 @@ where
     S: HomogeneousProductSpace,
     S::Scalar: Clone + PartialEq + Element,
     B: Backend,
-    S::DType: TensorKind<B>,
-    S::DType: BasicOps<B, Elem = S::Scalar>,
+    S::DType: ProposalDType<B> + BasicOps<B, Elem = S::Scalar>,
 {
     fn propose(&self, space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 2, S::DType> {
         let sample_size = space.sample_size();
@@ -188,8 +206,7 @@ impl<P> Metropolis<P> {
     where
         S: Space,
         B: Backend,
-        S::DType: TensorKind<B>,
-        S::DType: BasicOps<B, Elem = S::Scalar> + Ordered<B>,
+        S::DType: StepDType<B> + BasicOps<B, Elem = S::Scalar>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
         F: LogDensity<B, S>,

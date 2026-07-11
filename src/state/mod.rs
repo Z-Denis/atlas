@@ -14,6 +14,16 @@ pub trait IntoFloatTensor<B: Backend, const D: usize>: TensorKind<B> {
     fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D>;
 }
 
+#[doc(hidden)]
+pub trait StateDType<B: Backend>: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2> {}
+
+impl<B, T> StateDType<B> for T
+where
+    B: Backend,
+    T: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
+{
+}
+
 impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for Float {
     fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D> {
         tensor.cast(dtype)
@@ -97,7 +107,7 @@ impl<'a, M, SS> StateLogDensity<'a, M, SS> {
 pub struct VariationalState<M, S: Space, B: Backend, P, SS = Simplex>
 where
     M: Model<B>,
-    S::DType: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
+    S::DType: StateDType<B>,
 {
     pub model: M,
     pub space: S,
@@ -111,7 +121,7 @@ where
 impl<M, S: Space, B: Backend, P, SS> VariationalState<M, S, B, P, SS>
 where
     M: Model<B>,
-    S::DType: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
+    S::DType: StateDType<B>,
 {
     pub fn new(
         model: M,
@@ -152,7 +162,7 @@ where
     ) -> Self
     where
         S: RandomState,
-        S::DType: burn::tensor::Numeric<B, Elem = S::Scalar>,
+        S::DType: StateDType<B> + burn::tensor::Numeric<B, Elem = S::Scalar>,
         S::Scalar: Clone + Element,
     {
         let device = Default::default();
@@ -169,7 +179,7 @@ where
 
     pub fn sample(&mut self)
     where
-        S::DType: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B> + IntoFloatTensor<B, 2>,
+        S::DType: StateDType<B> + BasicOps<B, Elem = S::Scalar> + Ordered<B>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
         SS: StateSpace,
@@ -212,7 +222,7 @@ where
 impl<'a, M: Model<B>, S, B: Backend, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
 where
     S: Space,
-    S::DType: Numeric<B> + IntoFloatTensor<B, 2>,
+    S::DType: StateDType<B>,
     SS: StateSpace,
 {
     fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
