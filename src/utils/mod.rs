@@ -1,5 +1,8 @@
 use burn::tensor::{Distribution, Int, Tensor, TensorCreationOptions, backend::Backend};
 
+pub type FloatTensor<B, const D: usize> = Tensor<B, D, burn::tensor::Float>;
+pub type IntTensor<B, const D: usize> = Tensor<B, D, burn::tensor::Int>;
+
 pub(crate) fn int_opts<B: Backend>(device: &B::Device) -> TensorCreationOptions<B> {
     TensorCreationOptions::<B>::int().with_device(device.clone())
 }

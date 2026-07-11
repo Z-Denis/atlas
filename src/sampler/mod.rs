@@ -4,16 +4,17 @@ use burn_backend::tensor::{Ordered, TensorKind};
 use num_traits::ToPrimitive;
 
 use crate::space::{HomogeneousProductSpace, RandomState, Samples, Space};
+use crate::utils::{FloatTensor, IntTensor};
 use crate::utils::{chain_indices, float_opts, int_opts, randint};
 
-type ChainStats<B> = Tensor<B, 1, Int>;
-type LogProb<B> = Tensor<B, 1>;
+type ChainStats<B> = IntTensor<B, 1>;
+type LogProb<B> = FloatTensor<B, 1>;
 
 fn chain_update_indices<B: Backend>(
     n_chains: usize,
-    local_indices: Tensor<B, 1, Int>,
+    local_indices: IntTensor<B, 1>,
     device: &B::Device,
-) -> Tensor<B, 2, Int> {
+) -> IntTensor<B, 2> {
     Tensor::cat(
         vec![
             chain_indices::<B>(n_chains, device).unsqueeze_dim(1),
@@ -24,10 +25,7 @@ fn chain_update_indices<B: Backend>(
 }
 
 /// Draw from `0..local_size-1` while skipping the current state index.
-fn skip_index<B: Backend>(
-    choice: Tensor<B, 1, Int>,
-    forbidden: Tensor<B, 1, Int>,
-) -> Tensor<B, 1, Int> {
+fn skip_index<B: Backend>(choice: IntTensor<B, 1>, forbidden: IntTensor<B, 1>) -> IntTensor<B, 1> {
     let forbidden = forbidden.cast(choice.dtype());
     choice.clone().mask_where(
         choice.clone().greater_equal(forbidden),
@@ -231,10 +229,12 @@ mod tests {
         ContinuousSpace, HomogeneousProductSpace, HomogeneousSpace, Spin, ViewSpace,
     };
     use crate::test_utils::{ZeroModel, ints};
+    use crate::{FloatTensor, IntTensor};
     use crate::{Simplex, VariationalState};
     use burn::backend::Flex;
+    use burn::tensor::Float;
+    use burn::tensor::Tensor;
     use burn::tensor::backend::BackendTypes;
-    use burn::tensor::{Float, Int, Tensor};
 
     #[test]
     fn sampler_state_tracks_chain_state() {
@@ -350,13 +350,13 @@ mod tests {
 
         let continuous = ContinuousSpace::new(-1.0f32, 1.0, 2);
         assert_eq!(continuous.sample_size(), 2);
-        let continuous_sample: Tensor<Flex, 2, Float> = Tensor::from_data([[0.0f32, 1.0]], &device);
+        let continuous_sample: FloatTensor<Flex, 2> = Tensor::from_data([[0.0f32, 1.0]], &device);
         assert!(continuous.contains(continuous_sample).all().into_scalar());
         assert_eq!(continuous.view(&[0.0f32, 1.0]).particle(0), &[0.0, 1.0]);
         assert_eq!(continuous.random_state::<Flex>(4, &device).dims(), [4, 2]);
 
-        let mut continuous_state: SamplerState<Flex, Float> =
-            SamplerState::<Flex, Float>::from_space(
+        let mut continuous_state: SamplerState<Flex, burn::tensor::Float> =
+            SamplerState::<Flex, burn::tensor::Float>::from_space(
                 &HomogeneousSpace::new(continuous, 1),
                 2,
                 &device,
@@ -371,16 +371,17 @@ mod tests {
 
         let spin = Spin::half_integer(1);
         assert_eq!(spin.sample_size(), 1);
-        let spin_sample: Tensor<Flex, 2, Int> = Tensor::from_data([[1i32]], &device);
+        let spin_sample: IntTensor<Flex, 2> = Tensor::from_data([[1i32]], &device);
         assert!(spin.contains(spin_sample).all().into_scalar());
         assert_eq!(spin.view(&[1i32]), &[1]);
         assert_eq!(spin.random_state::<Flex>(4, &device).dims(), [4, 1]);
 
-        let mut spin_state: SamplerState<Flex, Int> = SamplerState::<Flex, Int>::from_space(
-            &HomogeneousSpace::new(Spin::half_integer(1), 1),
-            2,
-            &device,
-        );
+        let mut spin_state: SamplerState<Flex, burn::tensor::Int> =
+            SamplerState::<Flex, burn::tensor::Int>::from_space(
+                &HomogeneousSpace::new(Spin::half_integer(1), 1),
+                2,
+                &device,
+            );
         let spin_sampler = Metropolis::new(LocalProposal);
         spin_sampler.clone().step(
             &HomogeneousSpace::new(Spin::half_integer(1), 1),
@@ -397,8 +398,8 @@ mod tests {
         fn propose(
             &self,
             _space: &HomogeneousSpace<Spin>,
-            samples: Tensor<Flex, 2, Int>,
-        ) -> Tensor<Flex, 2, Int> {
+            samples: IntTensor<Flex, 2>,
+        ) -> IntTensor<Flex, 2> {
             Tensor::from_data([[0i32]], &samples.device())
         }
     }

@@ -1,9 +1,10 @@
 use burn::module::{Module, Param};
 use burn::tensor::{
-    Float, FloatDType, Tensor, TensorCreationOptions, activation::softplus, backend::Backend,
+    FloatDType, Tensor, TensorCreationOptions, activation::softplus, backend::Backend,
 };
 
 use super::Model;
+use crate::utils::FloatTensor;
 
 /// Minimal restricted Boltzmann machine.
 ///
@@ -54,7 +55,7 @@ where
         self.weight.val().dtype().into()
     }
 
-    fn log_value(&self, samples: Tensor<B, 2, Float>) -> Tensor<B, 1> {
+    fn log_value(&self, samples: FloatTensor<B, 2>) -> Tensor<B, 1> {
         assert_eq!(
             self.weight.val().dims(),
             [self.visible_size, self.hidden_size]
@@ -73,13 +74,11 @@ where
 mod tests {
     use super::*;
     use burn::backend::NdArray;
-    use burn::tensor::Float;
-
     #[test]
     fn rbm_produces_log_value() {
         let device = Default::default();
         let rbm = Rbm::<NdArray>::new(4, 3, None, &device);
-        let samples = Tensor::<NdArray, 2, Float>::from_data([[0.0, 1.0, 0.0, 1.0]], &device);
+        let samples = FloatTensor::<NdArray, 2>::from_data([[0.0, 1.0, 0.0, 1.0]], &device);
 
         let density = rbm.log_value(samples);
 

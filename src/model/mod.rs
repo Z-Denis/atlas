@@ -1,7 +1,9 @@
 pub mod rbm;
 
-use burn::tensor::{FloatDType, Numeric, Tensor, backend::Backend};
+use burn::tensor::{FloatDType, Numeric, backend::Backend};
 use burn_backend::tensor::TensorKind;
+
+use crate::utils::FloatTensor;
 
 /// Minimal model interface.
 ///
@@ -12,7 +14,7 @@ pub trait Model<B: Backend> {
         FloatDType::F32
     }
 
-    fn log_value(&self, samples: Tensor<B, 2, burn::tensor::Float>) -> Tensor<B, 1>
+    fn log_value(&self, samples: FloatTensor<B, 2>) -> FloatTensor<B, 1>
     where
         burn::tensor::Float: TensorKind<B> + Numeric<B>;
 }
@@ -24,12 +26,12 @@ mod tests {
     use super::*;
     use crate::test_utils::ZeroModel;
     use burn::backend::NdArray;
-    use burn::tensor::{Float, Tensor};
+    use burn::tensor::Tensor;
 
     #[test]
     fn model_provides_log_value() {
         let device = Default::default();
-        let samples: Tensor<NdArray, 2, Float> = Tensor::from_data([[0.0f32]], &device);
+        let samples: FloatTensor<NdArray, 2> = Tensor::from_data([[0.0f32]], &device);
         let model = ZeroModel;
 
         let density = model.log_value(samples);

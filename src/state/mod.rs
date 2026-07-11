@@ -5,27 +5,28 @@ use burn_backend::tensor::Ordered;
 use crate::model::Model;
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
+use crate::utils::FloatTensor;
 use burn::tensor::FloatDType;
 use burn_backend::tensor::{Float, TensorKind};
 
 #[doc(hidden)]
 pub trait IntoFloatTensor<B: Backend, const D: usize>: TensorKind<B> {
-    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> Tensor<B, D, Float>;
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D>;
 }
 
 impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for Float {
-    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> Tensor<B, D, Float> {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D> {
         tensor.cast(dtype)
     }
 }
 
 impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for burn::tensor::Int {
-    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> Tensor<B, D, Float> {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D> {
         tensor.cast(dtype)
     }
 }
 
-fn into_model_tensor<B, K>(samples: Tensor<B, 2, K>, dtype: FloatDType) -> Tensor<B, 2, Float>
+fn into_model_tensor<B, K>(samples: Tensor<B, 2, K>, dtype: FloatDType) -> FloatTensor<B, 2>
 where
     B: Backend,
     K: IntoFloatTensor<B, 2>,
@@ -199,7 +200,7 @@ where
     }
 
     /// Evaluate the model on the collected samples buffer.
-    pub fn log_value(&self) -> Tensor<B, 1>
+    pub fn log_value(&self) -> FloatTensor<B, 1>
     where
         M: Model<B>,
     {
@@ -208,7 +209,7 @@ where
     }
 
     /// Evaluate the model on arbitrary configurations.
-    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1>
+    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1>
     where
         M: Model<B>,
     {
@@ -225,7 +226,7 @@ where
     M: Model<B>,
     SS: StateSpace,
 {
-    fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> Tensor<B, 1> {
+    fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
         let samples = into_model_tensor(samples, self.param_dtype);
         self.state_space.log_density(self.model.log_value(samples))
     }
