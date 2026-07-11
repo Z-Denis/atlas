@@ -9,37 +9,36 @@ use super::homogeneous::{HomogeneousProductSpace, HomogeneousSpace};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Spin {
-    twice_s: usize,
     local_states: Vec<i32>,
 }
 
 impl Spin {
+    fn states_for(twice_s: usize) -> Vec<i32> {
+        (0..=twice_s)
+            .map(|m| -(twice_s as i32) + 2 * m as i32)
+            .collect()
+    }
+
+    #[must_use]
     pub fn half_integer(n: usize) -> Self {
-        let twice_s = n;
-        let local_states = (0..=twice_s)
-            .map(|m| -(twice_s as i32) + 2 * m as i32)
-            .collect();
         Self {
-            twice_s,
-            local_states,
+            local_states: Self::states_for(n),
         }
     }
 
+    #[must_use]
     pub fn integer(n: usize) -> Self {
-        let twice_s = 2 * n;
-        let local_states = (0..=twice_s)
-            .map(|m| -(twice_s as i32) + 2 * m as i32)
-            .collect();
         Self {
-            twice_s,
-            local_states,
+            local_states: Self::states_for(2 * n),
         }
     }
 
+    #[must_use]
     pub fn local_size(&self) -> usize {
         self.local_states.len()
     }
 
+    #[must_use]
     pub fn local_states(&self) -> &[i32] {
         &self.local_states
     }
