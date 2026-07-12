@@ -37,6 +37,7 @@ mod test_utils;
 mod utils;
 
 pub use model::{ComplexRbm, Model, Rbm};
+pub use observable::{Magnetization, Observable, TransverseField};
 pub use sampler::{
     GaussianProposal, LocalProposal, LogDensity, Metropolis, Proposal, SamplerState,
 };

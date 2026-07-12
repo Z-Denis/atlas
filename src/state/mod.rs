@@ -3,6 +3,7 @@ use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
 use crate::model::Model;
+use crate::observable::Observable;
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
 use crate::utils::{ComplexTensor, FloatTensor};
@@ -42,6 +43,65 @@ where
     K: IntoFloatTensor<B, 2>,
 {
     K::into_float(samples, dtype)
+}
+
+#[doc(hidden)]
+#[doc(hidden)]
+pub trait LocalValue<B: Backend>: Sized {
+    type Connected;
+
+    fn reshape_connected(flat: Self, batch: usize, n_conns: usize) -> Self::Connected;
+
+    fn local_value(
+        current: Self,
+        connected: Self::Connected,
+        mels: FloatTensor<B, 2>,
+    ) -> FloatTensor<B, 1>;
+}
+
+impl<B: Backend> LocalValue<B> for FloatTensor<B, 1> {
+    type Connected = FloatTensor<B, 2>;
+
+    fn reshape_connected(flat: Self, batch: usize, n_conns: usize) -> Self::Connected {
+        flat.reshape([batch, n_conns])
+    }
+
+    fn local_value(
+        current: Self,
+        connected: Self::Connected,
+        mels: FloatTensor<B, 2>,
+    ) -> FloatTensor<B, 1> {
+        (mels * (connected - current.unsqueeze_dim(1)).exp())
+            .sum_dim(1)
+            .squeeze_dim::<1>(1)
+    }
+}
+
+impl<B: Backend> LocalValue<B> for ComplexTensor<B, 1> {
+    type Connected = ComplexTensor<B, 2>;
+
+    fn reshape_connected(flat: Self, batch: usize, n_conns: usize) -> Self::Connected {
+        ComplexTensor::new(
+            flat.real().reshape([batch, n_conns]),
+            flat.imag().reshape([batch, n_conns]),
+        )
+    }
+
+    fn local_value(
+        current: Self,
+        connected: Self::Connected,
+        mels: FloatTensor<B, 2>,
+    ) -> FloatTensor<B, 1> {
+        let ratio = ComplexTensor::new(
+            connected.real() - current.real().unsqueeze_dim(1),
+            connected.imag() - current.imag().unsqueeze_dim(1),
+        )
+        .exp();
+        ComplexTensor::new(ratio.real() * mels.clone(), ratio.imag() * mels)
+            .real()
+            .sum_dim(1)
+            .squeeze_dim::<1>(1)
+    }
 }
 
 /// Marker for the ambient state space interpreted by a variational state.
@@ -208,6 +268,36 @@ where
         let samples = into_model_tensor(samples, self.model.param_dtype());
         self.model.log_value(samples)
     }
+
+    /// Expectation value of an observable over the collected samples.
+    pub fn expect<O>(&self, observable: &O) -> FloatTensor<B, 1>
+    where
+        O: Observable<B, S>,
+        M::Output: LocalValue<B>,
+    {
+        let (conns, mels) = observable.get_conns_and_mels(&self.space, self.samples.clone());
+        let batch = conns.dims()[0];
+        let n_conns = conns.dims()[1];
+        if n_conns == 0 {
+            return FloatTensor::<B, 1>::zeros(
+                [1],
+                TensorCreationOptions::<B>::new(self.samples.device()),
+            );
+        }
+
+        let sample_size = conns.dims()[2];
+        let current = self.model.log_value(into_model_tensor(
+            self.samples.clone(),
+            self.model.param_dtype(),
+        ));
+        let connected = self.model.log_value(into_model_tensor(
+            conns.reshape([batch * n_conns, sample_size]),
+            self.model.param_dtype(),
+        ));
+        let connected = <M::Output as LocalValue<B>>::reshape_connected(connected, batch, n_conns);
+
+        <M::Output as LocalValue<B>>::local_value(current, connected, mels).mean_dim(0)
+    }
 }
 
 impl<'a, M, S, B: Backend, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
@@ -227,9 +317,14 @@ where
 mod tests {
     use super::*;
     use crate::Hilbert;
+    use crate::IntTensor;
+    use crate::model::Rbm;
+    use crate::observable::{Magnetization, Observable, TransverseField};
     use crate::sampler::LocalProposal;
+    use crate::space::ContinuousSpace;
     use crate::space::HomogeneousSpace;
     use crate::space::Spin;
+    use crate::space::SpinSpace;
     use crate::test_utils::ZeroModel;
     use burn::backend::Flex;
     use burn::tensor::{Int, Tensor};
@@ -269,5 +364,98 @@ mod tests {
         let values = state.log_value();
 
         assert_eq!(values.dims(), [2]);
+    }
+
+    #[test]
+    fn expect_uses_observable_local_values() {
+        struct FirstColumnObservable;
+
+        impl<B, S> Observable<B, S> for FirstColumnObservable
+        where
+            B: burn::tensor::backend::Backend,
+            S: Space<DType = burn::tensor::Float>,
+        {
+            fn get_conns_and_mels(
+                &self,
+                _space: &S,
+                samples: Tensor<B, 2, S::DType>,
+            ) -> (Tensor<B, 3, S::DType>, FloatTensor<B, 2>) {
+                let device = Default::default();
+                let mels = samples
+                    .clone()
+                    .select(1, Tensor::<B, 1, Int>::zeros([1], &device));
+                (samples.unsqueeze_dim(1), mels)
+            }
+        }
+
+        let space = ContinuousSpace::new(-1.0f32, 1.0, 2);
+        let sampler = Metropolis::new(LocalProposal);
+        let mut state: VariationalState<_, _, Flex, _, Simplex> =
+            VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
+        state.samples =
+            FloatTensor::<Flex, 2>::from_data([[1.0, 2.0], [3.0, 4.0]], &Default::default());
+
+        let value = state.expect(&FirstColumnObservable);
+
+        assert_eq!(value.dims(), [1]);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0] - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn spin_magnetization_expectation_is_zero_for_symmetric_samples() {
+        let space: SpinSpace = HomogeneousSpace::new(Spin::half_integer(1), 1);
+        let sampler = Metropolis::new(LocalProposal);
+        let mut state: VariationalState<_, _, Flex, _, Simplex> =
+            VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
+        state.samples = IntTensor::<Flex, 2>::from_data([[-1], [1]], &Default::default());
+
+        let value = state.expect(&Magnetization);
+
+        assert_eq!(value.dims(), [1]);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn transverse_field_expectation_counts_flips() {
+        let space: SpinSpace = HomogeneousSpace::new(Spin::half_integer(1), 2);
+        let sampler = Metropolis::new(LocalProposal);
+        let mut state: VariationalState<_, _, Flex, _, Simplex> =
+            VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
+        state.samples = IntTensor::<Flex, 2>::from_data([[-1, 1], [1, -1]], &Default::default());
+
+        let value = state.expect(&TransverseField::new(1.0));
+
+        assert_eq!(value.dims(), [1]);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0] - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn transverse_field_expectation_matches_two_site_reference() {
+        let space: SpinSpace = HomogeneousSpace::new(Spin::half_integer(1), 2);
+        let sampler = Metropolis::new(LocalProposal);
+        let mut state: VariationalState<_, _, Flex, _, Simplex> =
+            VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
+        state.samples = IntTensor::<Flex, 2>::from_data([[1, -1]], &Default::default());
+
+        let value = state.expect(&TransverseField::new(0.5));
+
+        assert_eq!(value.dims(), [1]);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zero_bias_rbm_has_zero_magnetization_on_symmetric_samples() {
+        let device = Default::default();
+        let space: SpinSpace = HomogeneousSpace::new(Spin::half_integer(1), 1);
+        let sampler = Metropolis::new(LocalProposal);
+        let model = Rbm::<Flex>::new(1, 1, None, &device);
+        let mut state: VariationalState<_, _, Flex, _, Simplex> =
+            VariationalState::from_space(model, space, Simplex, sampler, 1, 2);
+        state.samples = IntTensor::<Flex, 2>::from_data([[-1], [1]], &device);
+
+        let value = state.expect(&Magnetization);
+
+        assert_eq!(value.dims(), [1]);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0]).abs() < 1e-6);
     }
 }
