@@ -36,7 +36,7 @@ pub mod state;
 mod test_utils;
 mod utils;
 
-pub use model::{Model, Rbm};
+pub use model::{ComplexRbm, Model, Rbm};
 pub use sampler::{
     GaussianProposal, LocalProposal, LogDensity, Metropolis, Proposal, SamplerState,
 };
@@ -45,4 +45,4 @@ pub use space::{
     Particles, RandomState, Samples, Space, Spin, SpinSpace, ViewSpace,
 };
 pub use state::{Hilbert, Simplex, StateSpace, VariationalState};
-pub use utils::{FloatTensor, IntTensor};
+pub use utils::{ComplexTensor, FloatTensor, IntTensor};

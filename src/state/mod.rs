@@ -5,7 +5,7 @@ use burn_backend::tensor::Ordered;
 use crate::model::Model;
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
-use crate::utils::FloatTensor;
+use crate::utils::{ComplexTensor, FloatTensor};
 use burn::tensor::FloatDType;
 use burn_backend::tensor::{Float, TensorKind};
 
@@ -48,21 +48,16 @@ where
 ///
 /// The state space decides how a model's `log_value` is exposed to the
 /// sampler as a `log_density`.
-pub trait StateSpace {
-    fn log_density<B>(&self, log_value: Tensor<B, 1>) -> Tensor<B, 1>
-    where
-        B: Backend;
+pub trait StateSpace<B: Backend, Out> {
+    fn log_density(&self, log_value: Out) -> FloatTensor<B, 1>;
 }
 
 /// Simplex state space.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Simplex;
 
-impl StateSpace for Simplex {
-    fn log_density<B>(&self, log_value: Tensor<B, 1>) -> Tensor<B, 1>
-    where
-        B: Backend,
-    {
+impl<B: Backend> StateSpace<B, FloatTensor<B, 1>> for Simplex {
+    fn log_density(&self, log_value: FloatTensor<B, 1>) -> FloatTensor<B, 1> {
         log_value
     }
 }
@@ -71,13 +66,15 @@ impl StateSpace for Simplex {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Hilbert;
 
-impl StateSpace for Hilbert {
-    fn log_density<B>(&self, log_value: Tensor<B, 1>) -> Tensor<B, 1>
-    where
-        B: Backend,
-    {
-        // The quantum case is real-valued for now.
-        2 * log_value
+impl<B: Backend> StateSpace<B, FloatTensor<B, 1>> for Hilbert {
+    fn log_density(&self, log_value: FloatTensor<B, 1>) -> FloatTensor<B, 1> {
+        log_value.mul_scalar(2)
+    }
+}
+
+impl<B: Backend> StateSpace<B, ComplexTensor<B, 1>> for Hilbert {
+    fn log_density(&self, log_value: ComplexTensor<B, 1>) -> FloatTensor<B, 1> {
+        log_value.real().mul_scalar(2)
     }
 }
 
@@ -87,16 +84,11 @@ impl StateSpace for Hilbert {
 struct StateLogDensity<'a, M, SS> {
     model: &'a M,
     state_space: &'a SS,
-    param_dtype: FloatDType,
 }
 
 impl<'a, M, SS> StateLogDensity<'a, M, SS> {
-    fn new(model: &'a M, state_space: &'a SS, param_dtype: FloatDType) -> Self {
-        Self {
-            model,
-            state_space,
-            param_dtype,
-        }
+    fn new(model: &'a M, state_space: &'a SS) -> Self {
+        Self { model, state_space }
     }
 }
 
@@ -182,15 +174,14 @@ where
         S::DType: StateDType<B> + BasicOps<B, Elem = S::Scalar> + Ordered<B>,
         S::Scalar: Clone + Element,
         P: Proposal<B, S>,
-        SS: StateSpace,
+        SS: StateSpace<B, M::Output>,
     {
         let sweep_size = self.space.sample_size();
         let n_chains = self.sampler_state.chains.dims()[0];
         let device = self.sampler_state.chains.device();
         let sampler = &self.sampler;
         // Build the private bridge from the model and state space.
-        let log_density =
-            StateLogDensity::new(&self.model, &self.state_space, self.model.param_dtype());
+        let log_density = StateLogDensity::new(&self.model, &self.state_space);
 
         for sample_idx in 0..self.n_samples_per_chain {
             for _ in 0..sweep_size {
@@ -207,26 +198,27 @@ where
     }
 
     /// Evaluate the model on the collected samples buffer.
-    pub fn log_value(&self) -> FloatTensor<B, 1> {
+    pub fn log_value(&self) -> M::Output {
         let samples = into_model_tensor(self.samples.clone(), self.model.param_dtype());
         self.model.log_value(samples)
     }
 
     /// Evaluate the model on arbitrary configurations.
-    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
+    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> M::Output {
         let samples = into_model_tensor(samples, self.model.param_dtype());
         self.model.log_value(samples)
     }
 }
 
-impl<'a, M: Model<B>, S, B: Backend, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
+impl<'a, M, S, B: Backend, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
 where
+    M: Model<B>,
     S: Space,
     S::DType: StateDType<B>,
-    SS: StateSpace,
+    SS: StateSpace<B, M::Output>,
 {
     fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
-        let samples = into_model_tensor(samples, self.param_dtype);
+        let samples = into_model_tensor(samples, self.model.param_dtype());
         self.state_space.log_density(self.model.log_value(samples))
     }
 }
@@ -234,6 +226,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Hilbert;
     use crate::sampler::LocalProposal;
     use crate::space::HomogeneousSpace;
     use crate::space::Spin;
@@ -262,6 +255,18 @@ mod tests {
         let samples = Tensor::<Flex, 2, Int>::from_data([[1], [0]], &Default::default());
 
         let values = state.log_value_on(samples);
+
+        assert_eq!(values.dims(), [2]);
+    }
+
+    #[test]
+    fn hilbert_accepts_real_log_value() {
+        let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
+        let sampler = Metropolis::new(LocalProposal);
+        let state: VariationalState<_, _, Flex, _, Hilbert> =
+            VariationalState::from_space(ZeroModel, space, Hilbert, sampler, 1, 2);
+
+        let values = state.log_value();
 
         assert_eq!(values.dims(), [2]);
     }

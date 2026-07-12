@@ -1,4 +1,5 @@
 pub mod rbm;
+pub mod utils;
 
 use burn::tensor::{FloatDType, Numeric, backend::Backend};
 use burn_backend::tensor::TensorKind;
@@ -10,16 +11,18 @@ use crate::utils::FloatTensor;
 /// A model is a Burn module that maps a batch of float configurations to a
 /// batch of logarithmic values.
 pub trait Model<B: Backend> {
+    type Output;
+
     fn param_dtype(&self) -> FloatDType {
         FloatDType::F32
     }
 
-    fn log_value(&self, samples: FloatTensor<B, 2>) -> FloatTensor<B, 1>
+    fn log_value(&self, samples: FloatTensor<B, 2>) -> Self::Output
     where
         burn::tensor::Float: TensorKind<B> + Numeric<B>;
 }
 
-pub use rbm::Rbm;
+pub use rbm::{ComplexRbm, Rbm};
 
 #[cfg(test)]
 mod tests {
