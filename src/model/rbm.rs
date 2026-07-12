@@ -1,9 +1,10 @@
 use burn::module::{Module, Param};
-use burn::tensor::{
-    FloatDType, Tensor, TensorCreationOptions, activation::softplus, backend::Backend,
-};
+use burn::tensor::{FloatDType, Tensor, TensorCreationOptions, backend::Backend};
 
-use super::{Model, utils::log_cosh};
+use super::{
+    Model,
+    utils::{log_cosh, log_cosh_real},
+};
 use crate::utils::{ComplexTensor, FloatTensor};
 
 /// Minimal restricted Boltzmann machine.
@@ -66,7 +67,7 @@ where
         let hidden_bias = self.hidden_bias.val().unsqueeze_dim(0);
 
         let visible = samples.clone().matmul(visible_bias);
-        let hidden = softplus(samples.matmul(self.weight.val()) + hidden_bias, 1.0).sum_dim(1);
+        let hidden = log_cosh_real(&(samples.matmul(self.weight.val()) + hidden_bias)).sum_dim(1);
 
         (visible + hidden).squeeze_dim::<1>(1)
     }
@@ -190,5 +191,18 @@ mod tests {
 
         assert_eq!(density.real().dims(), [1]);
         assert_eq!(density.imag().dims(), [1]);
+    }
+
+    #[test]
+    fn zero_bias_rbm_is_spin_flip_symmetric() {
+        let device = Default::default();
+        let rbm = Rbm::<NdArray>::new(4, 3, None, &device);
+        let samples = FloatTensor::<NdArray, 2>::from_data([[1.0, -1.0, 1.0, -1.0]], &device);
+
+        let value = rbm.log_value(samples.clone());
+        let flipped = rbm.log_value(samples.mul_scalar(-1.0));
+        let diff = (value - flipped).into_data().to_vec::<f32>().unwrap()[0].abs();
+
+        assert!(diff < 1e-6);
     }
 }

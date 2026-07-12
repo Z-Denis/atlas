@@ -1,6 +1,13 @@
 use burn::tensor::backend::Backend;
 
-use crate::utils::ComplexTensor;
+use crate::utils::{ComplexTensor, FloatTensor};
+
+/// Stable `log(cosh(x))` for real `x`.
+pub fn log_cosh_real<B: Backend, const D: usize>(x: &FloatTensor<B, D>) -> FloatTensor<B, D> {
+    let negative = x.clone().lower_elem(0);
+    let x = x.clone().mask_where(negative, -x.clone());
+    x.clone() + x.clone().mul_scalar(-2.0).exp().log1p() - std::f64::consts::LN_2
+}
 
 /// Stable principal-branch `log(1 + z)` for complex `z = re + i im`.
 pub fn log1p<B: Backend, const D: usize>(z: &ComplexTensor<B, D>) -> ComplexTensor<B, D> {
