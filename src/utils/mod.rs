@@ -15,6 +15,14 @@ impl<B: Backend, const D: usize> ComplexTensor<B, D> {
         Self { re, im }
     }
 
+    pub fn real(&self) -> FloatTensor<B, D> {
+        self.re.clone()
+    }
+
+    pub fn imag(&self) -> FloatTensor<B, D> {
+        self.im.clone()
+    }
+
     pub fn conj(&self) -> Self {
         Self::new(self.re.clone(), -self.im.clone())
     }

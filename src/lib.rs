@@ -36,7 +36,7 @@ pub mod state;
 mod test_utils;
 mod utils;
 
-pub use model::{Model, Rbm};
+pub use model::{ComplexRbm, Model, Rbm};
 pub use sampler::{
     GaussianProposal, LocalProposal, LogDensity, Metropolis, Proposal, SamplerState,
 };

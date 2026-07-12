@@ -1,4 +1,5 @@
 pub mod rbm;
+pub mod utils;
 
 use burn::tensor::{FloatDType, Numeric, backend::Backend};
 use burn_backend::tensor::TensorKind;
@@ -19,7 +20,7 @@ pub trait Model<B: Backend> {
         burn::tensor::Float: TensorKind<B> + Numeric<B>;
 }
 
-pub use rbm::Rbm;
+pub use rbm::{ComplexRbm, Rbm};
 
 #[cfg(test)]
 mod tests {
