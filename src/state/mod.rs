@@ -3,7 +3,7 @@ use burn_backend::Element;
 use burn_backend::tensor::Ordered;
 
 use crate::model::Model;
-use crate::observable::Observable;
+use crate::operator::Operator;
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
 use crate::utils::{ComplexTensor, FloatTensor};
@@ -270,12 +270,12 @@ where
     }
 
     /// Expectation value of an observable over the collected samples.
-    pub fn expect<O>(&self, observable: &O) -> FloatTensor<B, 1>
+    pub fn expect<O>(&self, operator: &O) -> FloatTensor<B, 1>
     where
-        O: Observable<B, S>,
+        O: Operator<B, S>,
         M::Output: LocalValue<B>,
     {
-        let (conns, mels) = observable.get_conns_and_mels(&self.space, self.samples.clone());
+        let (conns, mels) = operator.get_conns_and_mels(&self.space, self.samples.clone());
         let batch = conns.dims()[0];
         let n_conns = conns.dims()[1];
         if n_conns == 0 {
@@ -319,7 +319,7 @@ mod tests {
     use crate::Hilbert;
     use crate::IntTensor;
     use crate::model::Rbm;
-    use crate::observable::{Magnetization, Observable, TransverseField};
+    use crate::operator::{Magnetization, Operator, TransverseFieldIsing};
     use crate::sampler::LocalProposal;
     use crate::space::ContinuousSpace;
     use crate::space::HomogeneousSpace;
@@ -368,9 +368,9 @@ mod tests {
 
     #[test]
     fn expect_uses_observable_local_values() {
-        struct FirstColumnObservable;
+        struct FirstColumnOperator;
 
-        impl<B, S> Observable<B, S> for FirstColumnObservable
+        impl<B, S> Operator<B, S> for FirstColumnOperator
         where
             B: burn::tensor::backend::Backend,
             S: Space<DType = burn::tensor::Float>,
@@ -395,7 +395,7 @@ mod tests {
         state.samples =
             FloatTensor::<Flex, 2>::from_data([[1.0, 2.0], [3.0, 4.0]], &Default::default());
 
-        let value = state.expect(&FirstColumnObservable);
+        let value = state.expect(&FirstColumnOperator);
 
         assert_eq!(value.dims(), [1]);
         assert!((value.into_data().to_vec::<f32>().unwrap()[0] - 2.0).abs() < 1e-6);
@@ -403,11 +403,13 @@ mod tests {
 
     #[test]
     fn spin_magnetization_expectation_is_zero_for_symmetric_samples() {
+        let device = Default::default();
         let space: SpinSpace = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
+        let model = Rbm::<Flex>::zero(1, 1, None, &device);
         let mut state: VariationalState<_, _, Flex, _, Simplex> =
-            VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
-        state.samples = IntTensor::<Flex, 2>::from_data([[-1], [1]], &Default::default());
+            VariationalState::from_space(model, space, Simplex, sampler, 1, 2);
+        state.samples = IntTensor::<Flex, 2>::from_data([[-1], [1]], &device);
 
         let value = state.expect(&Magnetization);
 
@@ -423,10 +425,10 @@ mod tests {
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
         state.samples = IntTensor::<Flex, 2>::from_data([[-1, 1], [1, -1]], &Default::default());
 
-        let value = state.expect(&TransverseField::new(1.0));
+        let value = state.expect(&TransverseFieldIsing::new(0.0, 1.0));
 
         assert_eq!(value.dims(), [1]);
-        assert!((value.into_data().to_vec::<f32>().unwrap()[0] - 2.0).abs() < 1e-6);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0] + 2.0).abs() < 1e-6);
     }
 
     #[test]
@@ -437,10 +439,10 @@ mod tests {
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
         state.samples = IntTensor::<Flex, 2>::from_data([[1, -1]], &Default::default());
 
-        let value = state.expect(&TransverseField::new(0.5));
+        let value = state.expect(&TransverseFieldIsing::new(0.0, 0.5));
 
         assert_eq!(value.dims(), [1]);
-        assert!((value.into_data().to_vec::<f32>().unwrap()[0] - 1.0).abs() < 1e-6);
+        assert!((value.into_data().to_vec::<f32>().unwrap()[0] + 1.0).abs() < 1e-6);
     }
 
     #[test]
