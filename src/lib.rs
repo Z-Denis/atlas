@@ -45,4 +45,4 @@ pub use space::{
     Particles, RandomState, Samples, Space, Spin, SpinSpace, ViewSpace,
 };
 pub use state::{Hilbert, Simplex, StateSpace, VariationalState};
-pub use utils::{FloatTensor, IntTensor};
+pub use utils::{ComplexTensor, FloatTensor, IntTensor};
