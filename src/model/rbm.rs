@@ -46,6 +46,23 @@ impl<B: Backend> Rbm<B> {
             hidden_size,
         }
     }
+
+    pub fn zero(
+        visible_size: usize,
+        hidden_size: usize,
+        param_dtype: Option<FloatDType>,
+        device: &B::Device,
+    ) -> Self {
+        let param_dtype = param_dtype.unwrap_or(FloatDType::F32);
+        let opts = TensorCreationOptions::<B>::new(device.clone()).with_dtype(param_dtype.into());
+        Self {
+            visible_bias: Param::from_tensor(Tensor::zeros([visible_size], opts.clone())),
+            hidden_bias: Param::from_tensor(Tensor::zeros([hidden_size], opts.clone())),
+            weight: Param::from_tensor(Tensor::zeros([visible_size, hidden_size], opts)),
+            visible_size,
+            hidden_size,
+        }
+    }
 }
 
 impl<B> Model<B> for Rbm<B>
