@@ -51,11 +51,13 @@ impl<B> Model<B> for Rbm<B>
 where
     B: Backend,
 {
+    type Output = FloatTensor<B, 1>;
+
     fn param_dtype(&self) -> FloatDType {
         self.weight.val().dtype().into()
     }
 
-    fn log_value(&self, samples: FloatTensor<B, 2>) -> Tensor<B, 1> {
+    fn log_value(&self, samples: FloatTensor<B, 2>) -> Self::Output {
         assert_eq!(
             self.weight.val().dims(),
             [self.visible_size, self.hidden_size]
@@ -120,7 +122,7 @@ impl<B: Backend> ComplexRbm<B> {
         }
     }
 
-    pub fn log_psi(&self, samples: FloatTensor<B, 2>) -> ComplexTensor<B, 1> {
+    fn amplitude(&self, samples: FloatTensor<B, 2>) -> ComplexTensor<B, 1> {
         assert_eq!(
             self.weight_re.val().dims(),
             [self.visible_size, self.hidden_size]
@@ -151,12 +153,14 @@ impl<B> Model<B> for ComplexRbm<B>
 where
     B: Backend,
 {
+    type Output = ComplexTensor<B, 1>;
+
     fn param_dtype(&self) -> FloatDType {
         self.weight_re.val().dtype().into()
     }
 
-    fn log_value(&self, samples: FloatTensor<B, 2>) -> FloatTensor<B, 1> {
-        self.log_psi(samples).real()
+    fn log_value(&self, samples: FloatTensor<B, 2>) -> Self::Output {
+        self.amplitude(samples)
     }
 }
 
@@ -182,9 +186,9 @@ mod tests {
         let rbm = ComplexRbm::<NdArray>::new(4, 3, None, &device);
         let samples = FloatTensor::<NdArray, 2>::from_data([[0.0, 1.0, 0.0, 1.0]], &device);
 
-        let density = rbm.log_psi(samples);
+        let density = rbm.log_value(samples);
 
-        assert_eq!(density.re.dims(), [1]);
-        assert_eq!(density.im.dims(), [1]);
+        assert_eq!(density.real().dims(), [1]);
+        assert_eq!(density.imag().dims(), [1]);
     }
 }

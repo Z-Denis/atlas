@@ -24,7 +24,9 @@ where
     B: Backend,
     Float: TensorKind<B> + BasicOps<B>,
 {
-    fn log_value(&self, samples: FloatTensor<B, 2>) -> FloatTensor<B, 1> {
+    type Output = FloatTensor<B, 1>;
+
+    fn log_value(&self, samples: FloatTensor<B, 2>) -> Self::Output {
         zero_log_values(&samples)
     }
 }
