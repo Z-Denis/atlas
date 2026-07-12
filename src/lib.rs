@@ -27,7 +27,7 @@
 //! method and a `samples` buffer, mirroring the NetKet user interface.
 
 pub mod model;
-pub mod observable;
+pub mod operator;
 pub mod optimizer;
 pub mod sampler;
 pub mod space;
@@ -37,7 +37,7 @@ mod test_utils;
 mod utils;
 
 pub use model::{ComplexRbm, Model, Rbm};
-pub use observable::{Magnetization, Observable, TransverseField};
+pub use operator::{IsingEnergy, Magnetization, Operator, TransverseFieldIsing};
 pub use sampler::{
     GaussianProposal, LocalProposal, LogDensity, Metropolis, Proposal, SamplerState,
 };
