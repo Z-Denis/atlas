@@ -5,6 +5,26 @@ use burn_backend::tensor::Ordered;
 use super::continuous::Particles;
 use super::core::{LocalSpace, RandomState, Space, ViewSpace};
 
+#[doc(hidden)]
+pub trait HomogeneousValue<B: Backend>: burn_backend::tensor::TensorKind<B> + BasicOps<B> {}
+
+impl<B, T> HomogeneousValue<B> for T
+where
+    B: Backend,
+    T: burn_backend::tensor::TensorKind<B> + BasicOps<B>,
+{
+}
+
+#[doc(hidden)]
+pub trait HomogeneousState<B: Backend>: HomogeneousValue<B> + Numeric<B> + Ordered<B> {}
+
+impl<B, T> HomogeneousState<B> for T
+where
+    B: Backend,
+    T: HomogeneousValue<B> + Numeric<B> + Ordered<B>,
+{
+}
+
 /// Extension trait for local spaces with a finite set of local states.
 pub trait HomogeneousProductSpace: LocalSpace {
     fn local_states(&self) -> &[Self::Scalar];
@@ -13,16 +33,16 @@ pub trait HomogeneousProductSpace: LocalSpace {
         self.local_states().len()
     }
 
-    fn indices_of<B, K>(&self, values: Tensor<B, 1, K>) -> Tensor<B, 1, Int>
+    fn indices_of<B>(&self, values: Tensor<B, 1, Self::DType>) -> Tensor<B, 1, Int>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::DType: HomogeneousValue<B> + BasicOps<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         let device = values.device();
         let local_size = self.local_size();
         let n_values = values.dims()[0];
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device);
+        let states = Tensor::<B, 1, Self::DType>::from_data(self.local_states(), &device);
 
         values
             .clone()
@@ -34,14 +54,14 @@ pub trait HomogeneousProductSpace: LocalSpace {
             .squeeze_dim::<1>(1)
     }
 
-    fn states_at<B, K>(&self, indices: Tensor<B, 1, Int>) -> Tensor<B, 1, K>
+    fn states_at<B>(&self, indices: Tensor<B, 1, Int>) -> Tensor<B, 1, Self::DType>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar>,
+        Self::DType: HomogeneousValue<B> + BasicOps<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         let device = indices.device();
-        let states = Tensor::<B, 1, K>::from_data(self.local_states(), &device);
+        let states = Tensor::<B, 1, Self::DType>::from_data(self.local_states(), &device);
         states.select(0, indices)
     }
 }
@@ -71,15 +91,16 @@ impl<L> HomogeneousSpace<L> {
 
 impl<L: Space> Space for HomogeneousSpace<L> {
     type Scalar = L::Scalar;
+    type DType = L::DType;
 
     fn sample_size(&self) -> usize {
         self.local.sample_size() * self.n
     }
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::DType: HomogeneousState<B> + BasicOps<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         let device = samples.device();
@@ -124,14 +145,14 @@ impl<L: Space + 'static> ViewSpace for HomogeneousSpace<L> {
 impl<L: LocalSpace> LocalSpace for HomogeneousSpace<L> {}
 
 impl<L: Space + RandomState> RandomState for HomogeneousSpace<L> {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: Numeric<B, Elem = Self::Scalar>,
+        Self::DType: HomogeneousValue<B> + Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         self.local
-            .random_state::<B, K>(n_chains * self.n, device)
+            .random_state::<B>(n_chains * self.n, device)
             .reshape([n_chains, self.sample_size()])
     }
 }
@@ -145,17 +166,17 @@ impl<L: HomogeneousProductSpace> HomogeneousProductSpace for HomogeneousSpace<L>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FloatTensor;
     use crate::space::{ContinuousSpace, Spin};
     use burn::backend::Flex;
-    use burn::tensor::Tensor;
 
     #[test]
     fn continuous_product_space_checks_domain() {
         let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let space = HomogeneousSpace::new(local, 2);
         let device = Default::default();
-        let valid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 0.0, 1.0, -1.0]]], &device);
-        let invalid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0, 1.0, -1.0]]], &device);
+        let valid = FloatTensor::<Flex, 3>::from_data([[[0.0, 0.0, 1.0, -1.0]]], &device);
+        let invalid = FloatTensor::<Flex, 3>::from_data([[[0.0, 2.0, 1.0, -1.0]]], &device);
         assert!(space.contains(valid).all().into_scalar());
         assert!(!space.contains(invalid).all().into_scalar());
     }
@@ -188,7 +209,7 @@ mod tests {
         let local = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let space = HomogeneousSpace::new(local, 3);
         let device = Default::default();
-        let state: Tensor<Flex, 2> = space.random_state(4, &device);
+        let state = space.random_state::<Flex>(4, &device);
         assert_eq!(state.dims(), [4, 6]);
     }
 }

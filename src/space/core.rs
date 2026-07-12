@@ -1,40 +1,46 @@
 use burn::tensor::{BasicOps, Bool, Numeric, Tensor, backend::Backend};
 use burn_backend::Element;
-use burn_backend::tensor::Ordered;
+use burn_backend::tensor::{Ordered, TensorKind};
 
 /// Minimal description of a configuration domain.
 ///
-/// A space defines the flat sample size, the primitive scalar type used inside
-/// each configuration, and how to validate tensorized samples. The last axis is
-/// always the flat configuration axis; leading axes are batch axes.
+/// A space defines:
+/// - the flat configuration length,
+/// - the scalar type stored in each configuration,
+/// - and whether a tensorized sample belongs to the domain.
+///
+/// The last axis is always one full configuration. Leading axes are batch axes.
 pub trait Space {
     type Scalar;
+    type DType;
 
     fn sample_size(&self) -> usize;
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
+        Self::DType: TensorKind<B>,
+        Self::DType: BasicOps<B, Elem = Self::Scalar> + Ordered<B>,
         Self::Scalar: Clone + Element;
 }
 
 /// Marker trait for a structured local degree of freedom.
 pub trait LocalSpace: Space {}
 
-/// Extension trait for spaces that can generate initial states.
+/// Extension trait for spaces that can generate initial chain states.
 pub trait RandomState: Space {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: Numeric<B, Elem = Self::Scalar>,
+        Self::DType: TensorKind<B>,
+        Self::DType: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element;
 }
 
 /// Extension trait for spaces that can expose zero-copy structured views.
 ///
-/// The view type is free to encode whatever structure is useful for the space
-/// and its algorithms, as long as it borrows from the flat sample.
+/// The view may encode any useful structure, as long as it borrows from the
+/// flat sample.
 pub trait ViewSpace: Space {
     type View<'a>
     where
@@ -48,7 +54,7 @@ pub trait ViewSpace: Space {
 ///
 /// The last axis is always a complete sample of length `sample_size`. Leading
 /// axes are batch axes. Burn owns the backend representation; Atlas only keeps
-/// the flat sample layout and scalar type.
+/// the flat layout and scalar type.
 pub type Samples<B, const D: usize, K = burn::tensor::Float> = Tensor<B, D, K>;
 
 #[cfg(test)]

@@ -5,6 +5,44 @@ use burn_backend::tensor::Ordered;
 use crate::model::Model;
 use crate::sampler::{LogDensity, Metropolis, Proposal, SamplerState};
 use crate::space::{RandomState, Samples, Space};
+use crate::utils::FloatTensor;
+use burn::tensor::FloatDType;
+use burn_backend::tensor::{Float, TensorKind};
+
+#[doc(hidden)]
+pub trait IntoFloatTensor<B: Backend, const D: usize>: TensorKind<B> {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D>;
+}
+
+#[doc(hidden)]
+pub trait StateDType<B: Backend>: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2> {}
+
+impl<B, T> StateDType<B> for T
+where
+    B: Backend,
+    T: BasicOps<B> + Numeric<B> + IntoFloatTensor<B, 2>,
+{
+}
+
+impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for Float {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D> {
+        tensor.cast(dtype)
+    }
+}
+
+impl<B: Backend, const D: usize> IntoFloatTensor<B, D> for burn::tensor::Int {
+    fn into_float(tensor: Tensor<B, D, Self>, dtype: FloatDType) -> FloatTensor<B, D> {
+        tensor.cast(dtype)
+    }
+}
+
+fn into_model_tensor<B, K>(samples: Tensor<B, 2, K>, dtype: FloatDType) -> FloatTensor<B, 2>
+where
+    B: Backend,
+    K: IntoFloatTensor<B, 2>,
+{
+    K::into_float(samples, dtype)
+}
 
 /// Marker for the ambient state space interpreted by a variational state.
 ///
@@ -49,11 +87,16 @@ impl StateSpace for Hilbert {
 struct StateLogDensity<'a, M, SS> {
     model: &'a M,
     state_space: &'a SS,
+    param_dtype: FloatDType,
 }
 
 impl<'a, M, SS> StateLogDensity<'a, M, SS> {
-    fn new(model: &'a M, state_space: &'a SS) -> Self {
-        Self { model, state_space }
+    fn new(model: &'a M, state_space: &'a SS, param_dtype: FloatDType) -> Self {
+        Self {
+            model,
+            state_space,
+            param_dtype,
+        }
     }
 }
 
@@ -61,38 +104,38 @@ impl<'a, M, SS> StateLogDensity<'a, M, SS> {
 ///
 /// A variational state owns the model, space, state space, sampler, chain
 /// state, and collected samples. It is the natural checkpoint boundary.
-pub struct VariationalState<M, S: Space, B, K, P, SS = Simplex>
+pub struct VariationalState<M, S: Space, B: Backend, P, SS = Simplex>
 where
-    B: Backend,
-    K: BasicOps<B> + Numeric<B>,
+    M: Model<B>,
+    S::DType: StateDType<B>,
 {
     pub model: M,
     pub space: S,
     pub state_space: SS,
     pub sampler: Metropolis<P>,
-    pub sampler_state: SamplerState<B, K>,
-    pub samples: Samples<B, 2, K>,
+    pub sampler_state: SamplerState<B, S::DType>,
+    pub samples: Samples<B, 2, S::DType>,
     n_samples_per_chain: usize,
 }
 
-impl<M, S: Space, B, K, P, SS> VariationalState<M, S, B, K, P, SS>
+impl<M, S: Space, B: Backend, P, SS> VariationalState<M, S, B, P, SS>
 where
-    B: Backend,
-    K: BasicOps<B> + Numeric<B>,
+    M: Model<B>,
+    S::DType: StateDType<B>,
 {
     pub fn new(
         model: M,
         space: S,
         state_space: SS,
         sampler: Metropolis<P>,
-        sampler_state: SamplerState<B, K>,
+        sampler_state: SamplerState<B, S::DType>,
         n_samples_per_chain: usize,
     ) -> Self {
         assert!(n_samples_per_chain > 0);
 
         let dims = sampler_state.chains.dims();
         let device = sampler_state.chains.device();
-        let samples = Tensor::<B, 2, K>::zeros(
+        let samples = Tensor::<B, 2, S::DType>::zeros(
             [dims[0] * n_samples_per_chain, dims[1]],
             TensorCreationOptions::<B>::new(device),
         );
@@ -119,11 +162,11 @@ where
     ) -> Self
     where
         S: RandomState,
-        K: burn::tensor::Numeric<B, Elem = S::Scalar>,
+        S::DType: StateDType<B> + burn::tensor::Numeric<B, Elem = S::Scalar>,
         S::Scalar: Clone + Element,
     {
         let device = Default::default();
-        let sampler_state = SamplerState::from_space(&space, n_chains, &device);
+        let sampler_state = SamplerState::<B, S::DType>::from_space(&space, n_chains, &device);
         Self::new(
             model,
             space,
@@ -136,12 +179,9 @@ where
 
     pub fn sample(&mut self)
     where
-        S: Space,
-        B: Backend,
-        K: BasicOps<B, Elem = S::Scalar> + Numeric<B> + Ordered<B>,
+        S::DType: StateDType<B> + BasicOps<B, Elem = S::Scalar> + Ordered<B>,
         S::Scalar: Clone + Element,
-        P: Proposal<B, S, K>,
-        M: Model<S, B>,
+        P: Proposal<B, S>,
         SS: StateSpace,
     {
         let sweep_size = self.space.sample_size();
@@ -149,7 +189,8 @@ where
         let device = self.sampler_state.chains.device();
         let sampler = &self.sampler;
         // Build the private bridge from the model and state space.
-        let log_density = StateLogDensity::new(&self.model, &self.state_space);
+        let log_density =
+            StateLogDensity::new(&self.model, &self.state_space, self.model.param_dtype());
 
         for sample_idx in 0..self.n_samples_per_chain {
             for _ in 0..sweep_size {
@@ -166,33 +207,27 @@ where
     }
 
     /// Evaluate the model on the collected samples buffer.
-    pub fn log_value(&self) -> Tensor<B, 1>
-    where
-        M: Model<S, B>,
-    {
-        self.model.log_value(&self.space, self.samples.clone())
+    pub fn log_value(&self) -> FloatTensor<B, 1> {
+        let samples = into_model_tensor(self.samples.clone(), self.model.param_dtype());
+        self.model.log_value(samples)
     }
 
     /// Evaluate the model on arbitrary configurations.
-    pub fn log_value_on(&self, samples: Tensor<B, 2, K>) -> Tensor<B, 1>
-    where
-        M: Model<S, B>,
-    {
-        self.model.log_value(&self.space, samples)
+    pub fn log_value_on(&self, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
+        let samples = into_model_tensor(samples, self.model.param_dtype());
+        self.model.log_value(samples)
     }
 }
 
-impl<'a, M, S, B, K, SS> LogDensity<B, S, K> for StateLogDensity<'a, M, SS>
+impl<'a, M: Model<B>, S, B: Backend, SS> LogDensity<B, S> for StateLogDensity<'a, M, SS>
 where
     S: Space,
-    B: Backend,
-    K: Numeric<B>,
-    M: Model<S, B>,
+    S::DType: StateDType<B>,
     SS: StateSpace,
 {
-    fn log_density(&self, space: &S, samples: Tensor<B, 2, K>) -> Tensor<B, 1> {
-        self.state_space
-            .log_density(self.model.log_value(space, samples))
+    fn log_density(&self, _space: &S, samples: Tensor<B, 2, S::DType>) -> FloatTensor<B, 1> {
+        let samples = into_model_tensor(samples, self.param_dtype);
+        self.state_space.log_density(self.model.log_value(samples))
     }
 }
 
@@ -210,7 +245,7 @@ mod tests {
     fn log_value_uses_collected_samples() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
-        let state: VariationalState<_, _, Flex, Int, _, Simplex> =
+        let state: VariationalState<_, _, Flex, _, Simplex> =
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
 
         let values = state.log_value();
@@ -222,7 +257,7 @@ mod tests {
     fn log_value_on_uses_arbitrary_samples() {
         let space = HomogeneousSpace::new(Spin::half_integer(1), 1);
         let sampler = Metropolis::new(LocalProposal);
-        let state: VariationalState<_, _, Flex, Int, _, Simplex> =
+        let state: VariationalState<_, _, Flex, _, Simplex> =
             VariationalState::from_space(ZeroModel, space, Simplex, sampler, 1, 2);
         let samples = Tensor::<Flex, 2, Int>::from_data([[1], [0]], &Default::default());
 

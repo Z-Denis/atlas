@@ -58,15 +58,16 @@ impl<T: Float> ContinuousSpace<T> {
 
 impl<T: Float> Space for ContinuousSpace<T> {
     type Scalar = T;
+    type DType = burn::tensor::Float;
 
     fn sample_size(&self) -> usize {
         self.dim
     }
 
-    fn contains<B, const D: usize, K>(&self, samples: Tensor<B, D, K>) -> Tensor<B, D, Bool>
+    fn contains<B, const D: usize>(&self, samples: Tensor<B, D, Self::DType>) -> Tensor<B, D, Bool>
     where
         B: Backend,
-        K: BasicOps<B, Elem = T> + Ordered<B>,
+        Self::DType: BasicOps<B, Elem = T> + Ordered<B>,
         T: Clone + Element,
     {
         let device = samples.device();
@@ -114,14 +115,14 @@ impl<T: Float + 'static> ViewSpace for ContinuousSpace<T> {
 impl<T: Float> LocalSpace for ContinuousSpace<T> {}
 
 impl<T: Float> RandomState for ContinuousSpace<T> {
-    fn random_state<B, K>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, K>
+    fn random_state<B>(&self, n_chains: usize, device: &B::Device) -> Tensor<B, 2, Self::DType>
     where
         B: Backend,
-        K: Numeric<B, Elem = Self::Scalar>,
+        Self::DType: Numeric<B, Elem = Self::Scalar>,
         Self::Scalar: Clone + Element,
     {
         if self.lower.is_finite() && self.upper.is_finite() {
-            Tensor::<B, 2, K>::random(
+            Tensor::<B, 2, Self::DType>::random(
                 [n_chains, self.sample_size()],
                 Distribution::Uniform(
                     ToPrimitive::to_f64(&self.lower).unwrap(),
@@ -130,7 +131,7 @@ impl<T: Float> RandomState for ContinuousSpace<T> {
                 float_opts::<B>(device),
             )
         } else {
-            Tensor::<B, 2, K>::random(
+            Tensor::<B, 2, Self::DType>::random(
                 [n_chains, self.sample_size()],
                 Distribution::Normal(0.0, 1.0),
                 float_opts::<B>(device),
@@ -144,15 +145,15 @@ pub type ParticleSpace<T> = HomogeneousSpace<ContinuousSpace<T>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FloatTensor;
     use burn::backend::Flex;
-    use burn::tensor::Tensor;
 
     #[test]
     fn bounded_contains() {
         let space = ContinuousSpace::new(-1.0f32, 1.0, 2);
         let device = Default::default();
-        let valid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 0.0]], [[1.0, -1.0]]], &device);
-        let invalid: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
+        let valid = FloatTensor::<Flex, 3>::from_data([[[0.0, 0.0]], [[1.0, -1.0]]], &device);
+        let invalid = FloatTensor::<Flex, 3>::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
         assert!(space.contains(valid).all().into_scalar());
         assert!(!space.contains(invalid).all().into_scalar());
     }
@@ -161,7 +162,7 @@ mod tests {
     fn unbounded_contains() {
         let space = ContinuousSpace::new(f32::NEG_INFINITY, f32::INFINITY, 2);
         let device = Default::default();
-        let sample: Tensor<Flex, 3> = Tensor::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
+        let sample = FloatTensor::<Flex, 3>::from_data([[[0.0, 2.0]], [[1.0, -1.0]]], &device);
         assert!(space.contains(sample).all().into_scalar());
     }
 
@@ -169,7 +170,7 @@ mod tests {
     fn random_state_has_shape() {
         let space = ContinuousSpace::new(-1.0f32, 1.0, 3);
         let device = Default::default();
-        let state: Tensor<Flex, 2> = space.random_state(4, &device);
+        let state = space.random_state::<Flex>(4, &device);
         assert_eq!(state.dims(), [4, 3]);
     }
 
