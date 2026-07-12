@@ -15,16 +15,23 @@ impl<B: Backend, const D: usize> ComplexTensor<B, D> {
         Self { re, im }
     }
 
-    pub fn real(&self) -> FloatTensor<B, D> {
-        self.re.clone()
-    }
-
-    pub fn imag(&self) -> FloatTensor<B, D> {
-        self.im.clone()
-    }
-
     pub fn conj(&self) -> Self {
         Self::new(self.re.clone(), -self.im.clone())
+    }
+
+    pub fn exp(&self) -> Self {
+        let mag = self.re.clone().exp();
+        Self::new(
+            mag.clone() * self.im.clone().cos(),
+            mag * self.im.clone().sin(),
+        )
+    }
+
+    pub fn log(&self) -> Self {
+        Self::new(
+            self.abs2().log().mul_scalar(0.5),
+            self.im.clone().atan2(self.re.clone()),
+        )
     }
 
     pub fn abs2(&self) -> FloatTensor<B, D> {
@@ -93,5 +100,19 @@ mod tests {
             complex.conj().im.into_data().to_vec::<f32>().unwrap(),
             vec![-3.0, 4.0]
         );
+    }
+
+    #[test]
+    fn complex_tensor_log_is_principal_branch() {
+        let device = Default::default();
+        let re = FloatTensor::<Flex, 1>::from_data([-1.0f32], &device);
+        let im = FloatTensor::<Flex, 1>::from_data([0.0f32], &device);
+        let complex = ComplexTensor::new(re, im).log();
+
+        let re = complex.re.into_data().to_vec::<f32>().unwrap();
+        let im = complex.im.into_data().to_vec::<f32>().unwrap();
+
+        assert!((re[0] - 0.0).abs() < 1e-6);
+        assert!((im[0] - std::f32::consts::PI).abs() < 1e-6);
     }
 }
